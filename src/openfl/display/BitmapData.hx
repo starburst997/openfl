@@ -156,7 +156,8 @@ class BitmapData implements IBitmapDrawable {
 	@:noCompletion private static var __textureFormat:Int;
 	@:noCompletion private static var __textureInternalFormat:Int;
 	
-	
+    public static var premultipliedDefault = true;
+
 	/**
 	 * The height of the bitmap image in pixels.
 	 */
@@ -291,7 +292,7 @@ class BitmapData implements IBitmapDrawable {
 			#if sys
 			var buffer = new ImageBuffer (new UInt8Array (width * height * 4), width, height);
 			buffer.format = BGRA32;
-			buffer.premultiplied = true;
+			buffer.premultiplied = premultipliedDefault;
 			
 			image = new Image (buffer, 0, 0, width, height);
 			
