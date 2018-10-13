@@ -374,7 +374,8 @@ class MovieClip extends flash.display.MovieClip {
 			
 		}
 		
-		Reflect.setField (this, displayObject.name, displayObject);
+        // JD: Disabled this because it was throwing errors 
+		//Reflect.setField (this, displayObject.name, displayObject);
 		
 	}
 	
