@@ -533,7 +533,7 @@ class MovieClip extends flash.display.MovieClip {
 						
 					}
 					
-					if (object.clipDepth != 0 #if neko && object.clipDepth != null #end) {
+					if (object.clipDepth != 0 #if (neko || html5) && object.clipDepth != null #end) {
 						
 						mask = child;
 						displayObject.visible = false;
@@ -550,7 +550,7 @@ class MovieClip extends flash.display.MovieClip {
 		
 	}
 	
-	@:noCompletion private inline function getDisplayObject(charId:Int):DisplayObject {
+	@:noCompletion private function getDisplayObject(charId:Int):DisplayObject {
 		
 		var displayObject:DisplayObject = null;
 		
