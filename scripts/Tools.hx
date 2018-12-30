@@ -3,6 +3,8 @@ package;
 
 import format.swf.exporters.SWFLiteExporter;
 import format.swf.tags.TagDefineBits;
+import format.swf.tags.TagDefineBitsJPEG2;
+import format.swf.tags.TagDefineBitsJPEG3;
 import format.swf.tags.TagDefineBitsLossless;
 import format.swf.tags.TagDefineButton2;
 import format.swf.tags.TagDefineEditText;
@@ -24,9 +26,9 @@ import openfl._internal.symbols.DynamicTextSymbol;
 import openfl._internal.symbols.ShapeSymbol;
 import openfl._internal.symbols.SpriteSymbol;
 import openfl._internal.symbols.StaticTextSymbol;
-import openfl._internal.swf.SWFLibrary;
-import openfl._internal.swf.SWFLiteLibrary;
-import openfl._internal.swf.SWFLite;
+import openfl._internal.formats.swf.SWFLibrary;
+import openfl._internal.formats.swf.SWFLiteLibrary;
+import openfl._internal.formats.swf.SWFLite;
 import openfl.display.PNGEncoderOptions;
 import openfl.utils.ByteArray;
 import sys.io.File;
@@ -74,36 +76,28 @@ class Tools {
 		
 		var haxePath = Sys.getEnv ("HAXEPATH");
 		var command = (haxePath != null && haxePath != "") ? haxePath + "/haxelib" : "haxelib";
-		
-		var process = new Process (command, [ "path", "lime" ]);
 		var path = "";
+		
+		var process = new Process ("haxelib", [ "path", "lime" ]);
 		
 		try {
 			
-			var lines = new Array <String> ();
-			
 			while (true) {
 				
-				var length = lines.length;
 				var line = StringTools.trim (process.stdout.readLine ());
 				
-				if (length > 0 && (line == "-D lime" || StringTools.startsWith (line, "-D lime="))) {
+				if (StringTools.startsWith (line, "-L ")) {
 					
-					path = StringTools.trim (lines[length - 1]);
+					path = StringTools.trim (line.substr (2));
+					break;
 					
 				}
-				
-				lines.push (line);
-				
+			
 			}
 			
-		} catch (e:Dynamic) {
-			
-			process.close ();
-			
-		}
+		} catch (e:Dynamic) {}
 		
-		path += "/ndll/";
+		process.close ();
 		
 		switch (#if (lime >= "7.0.0") System.hostPlatform #else PlatformHelper.hostPlatform #end) {
 			
@@ -169,7 +163,7 @@ class Tools {
 			
 		}
 		
-		packageName = packageName.toLowerCase ();
+		packageName = packageName.charAt (0).toLowerCase () + packageName.substr (1);
 		name = name.substr (0, 1).toUpperCase () + name.substr (1);
 		
 		if (packageName != "") {
@@ -187,6 +181,7 @@ class Tools {
 	
 	private static function generateSWFClasses (project:HXProject, output:HXProject, swfAsset:Asset, prefix:String = ""):Array<String> {
 		
+		var bitmapDataTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/BitmapData.mtt");
 		var movieClipTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/MovieClip.mtt");
 		var simpleButtonTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/SimpleButton.mtt");
 		
@@ -199,6 +194,11 @@ class Tools {
 		}
 		
 		var generatedClasses = [];
+
+		var classLookupMap = new Map<Int,String>();
+		for (className in swf.symbols.keys()) {
+			classLookupMap.set(swf.symbols[className], className);
+		}
 		
 		for (className in swf.symbols.keys ()) {
 			
@@ -219,17 +219,18 @@ class Tools {
 				
 			}
 			
-			packageName = packageName.toLowerCase ();
-			name = name.substr (0, 1).toUpperCase () + name.substr (1);
-			
-			var packageNameDot = packageName;
-			if (packageNameDot.length > 0) packageNameDot += ".";
+			packageName = packageName.charAt (0).toLowerCase () + packageName.substr (1);
+			name = formatClassName (name, prefix);
 			
 			var symbolID = swf.symbols.get (className);
 			var templateData = null;
 			var symbol = swf.data.getCharacter (symbolID);
 			
-			if (Std.is (symbol, TagDefineButton2)) {
+			if (Std.is (symbol, TagDefineBits) || Std.is (symbol, TagDefineBitsJPEG2) || Std.is (symbol, TagDefineBitsLossless)) {
+				
+				templateData = bitmapDataTemplate;
+				
+			} else if (Std.is (symbol, TagDefineButton2)) {
 				
 				templateData = simpleButtonTemplate;
 				
@@ -250,48 +251,57 @@ class Tools {
 					
 					if (timelineContainer.frames.length > 0) {
 						
-						for (frameObject in timelineContainer.frames[0].objects) {
-							
-							var placeObject:TagPlaceObject = cast timelineContainer.tags[frameObject.placedAtIndex];
-							
-							if (placeObject != null && placeObject.instanceName != null) {
+						for (frame in timelineContainer.frames) {
+
+							for (frameObject in frame.objects) {
 								
-								var childSymbol = timelineContainer.getCharacter (frameObject.characterId);
-								var className = null;
+								var placeObject:TagPlaceObject = cast timelineContainer.tags[frameObject.placedAtIndex];
 								
-								if (childSymbol != null) {
-									
-									if (Std.is (childSymbol, TagDefineSprite)) {
-										
-										className = "openfl.display.MovieClip";
-										
-									} else if (Std.is (childSymbol, TagDefineBitsLossless) || Std.is (childSymbol, TagDefineBits)) {
-										
-										className = "openfl.display.Bitmap";
-										
-									} else if (Std.is (childSymbol, TagDefineShape) || Std.is (childSymbol, TagDefineMorphShape)) {
-										
-										className = "openfl.display.Shape";
-										
-									} else if (Std.is (childSymbol, TagDefineText) || Std.is (childSymbol, TagDefineEditText)) {
-										
-										className = "openfl.text.TextField";
-										
-									} else if (Std.is (childSymbol, TagDefineButton2)) {
-										
-										className = "openfl.display.SimpleButton";
-										
+								if (placeObject != null && placeObject.instanceName != null && !objectReferences.exists(placeObject.instanceName)) {
+
+									var id = frameObject.characterId;
+									var childSymbol = timelineContainer.getCharacter (id);
+									var className = null;
+
+									if (classLookupMap.exists(id)) {
+										className = classLookupMap.get(id);
 									}
-									
-									if (className != null && !objectReferences.exists (placeObject.instanceName)) {
-										
-										objectReferences[placeObject.instanceName] = true;
-										classProperties.push ( { name: placeObject.instanceName, type: className } );
-										
+									if (childSymbol != null) {
+
+										if (className == null) {
+
+											if (Std.is (childSymbol, TagDefineSprite)) {
+
+												className = "openfl.display.MovieClip";
+
+											} else if (Std.is (childSymbol, TagDefineBits) || Std.is (childSymbol, TagDefineBitsJPEG2) || Std.is (childSymbol, TagDefineBitsLossless)) {
+
+												className = "openfl.display.BitmapData";
+
+											} else if (Std.is (childSymbol, TagDefineShape) || Std.is (childSymbol, TagDefineMorphShape)) {
+
+												className = "openfl.display.Shape";
+
+											} else if (Std.is (childSymbol, TagDefineText) || Std.is (childSymbol, TagDefineEditText)) {
+
+												className = "openfl.text.TextField";
+
+											} else if (Std.is (childSymbol, TagDefineButton2)) {
+
+												className = "openfl.display.SimpleButton";
+
+											}
+										}
+										if (className != null && !objectReferences.exists (placeObject.instanceName)) {
+
+											objectReferences[placeObject.instanceName] = true;
+											classProperties.push ( { name: placeObject.instanceName, type: className } );
+
+										}
+
 									}
-									
+
 								}
-								
 							}
 							
 						}
@@ -300,7 +310,7 @@ class Tools {
 					
 				}
 				
-				var context = { PACKAGE_NAME: packageName, PACKAGE_NAME_DOT: packageNameDot, CLASS_NAME: name, SWF_ID: swfAsset.id, SYMBOL_ID: symbolID, PREFIX: prefix, CLASS_PROPERTIES: classProperties };
+				var context = { PACKAGE_NAME: packageName, NATIVE_CLASS_NAME: className, CLASS_NAME: name, SWF_ID: swfAsset.id, SYMBOL_ID: symbolID, PREFIX: prefix, CLASS_PROPERTIES: classProperties };
 				var template = new Template (templateData);
 				var targetPath;
 				
@@ -318,7 +328,7 @@ class Tools {
 				templateFile.data = template.execute (context);
 				output.assets.push (templateFile);
 				
-				generatedClasses.push (packageNameDot + prefix + name);
+				generatedClasses.push ((packageName.length > 0 ? packageName + "." : "") + name);
 				
 			}
 			
@@ -332,9 +342,11 @@ class Tools {
 	private static function generateSWFLiteClasses (targetPath:String, output:Array<Asset>, swfLite:SWFLite, swfID:String, prefix:String = ""):Array<String> {
 		
 		#if commonjs
+		var bitmapDataTemplate = File.getContent (#if (lime >= "7.0.0") Path.combine #else PathHelper.combine #end (js.Node.__dirname, "../assets/templates/swf/BitmapData.mtt"));
 		var movieClipTemplate = File.getContent (#if (lime >= "7.0.0") Path.combine #else PathHelper.combine #end (js.Node.__dirname, "../assets/templates/swf/MovieClip.mtt"));
 		var simpleButtonTemplate = File.getContent (#if (lime >= "7.0.0") Path.combine #else PathHelper.combine #end (js.Node.__dirname, "../assets/templates/swf/SimpleButton.mtt"));
 		#else
+		var bitmapDataTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/BitmapData.mtt");
 		var movieClipTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/MovieClip.mtt");
 		var simpleButtonTemplate = File.getContent (#if (lime >= "7.0.0") Haxelib.getPath #else PathHelper.getHaxelib #end (new Haxelib ("openfl"), true) + "/assets/templates/swf/SimpleButton.mtt");
 		#end
@@ -346,7 +358,11 @@ class Tools {
 			var symbol = swfLite.symbols.get (symbolID);
 			var templateData = null;
 			
-			if (Std.is (symbol, SpriteSymbol)) {
+			if (Std.is (symbol, BitmapSymbol)) {
+				
+				templateData = bitmapDataTemplate;
+				
+			} else if (Std.is (symbol, SpriteSymbol)) {
 				
 				templateData = movieClipTemplate;
 				
@@ -358,7 +374,6 @@ class Tools {
 			
 			if (templateData != null && symbol.className != null) {
 				
-				//var className = formatClassName (symbol.className, prefix);
 				var className = symbol.className;
 				
 				var name = className;
@@ -373,10 +388,10 @@ class Tools {
 					
 				}
 				
-				var packageNameDot = packageName;
-				if (packageNameDot.length > 0) packageNameDot += ".";
+				name = formatClassName (name, prefix);
 				
 				var classProperties = [];
+				var objectReferences = new Map<String, Bool> ();
 				
 				if (Std.is (symbol, SpriteSymbol)) {
 					
@@ -384,51 +399,59 @@ class Tools {
 					
 					if (spriteSymbol.frames.length > 0 && Reflect.hasField(spriteSymbol.frames[0], "objects")) {
 
-						for (object in spriteSymbol.frames[0].objects) {
-							
-							if (object.name != null) {
-								
-								if (swfLite.symbols.exists (object.symbol)) {
+						for (frame in spriteSymbol.frames) {
+
+							if (frame.objects != null) {
+
+								for (object in frame.objects) {
 									
-									var childSymbol = swfLite.symbols.get (object.symbol);
-									//var className = formatClassName (childSymbol.className, prefix);
-									var className = childSymbol.className;
-									//var className = null;
-									
-									if (className == null) {
+									if (object.name != null && !objectReferences.exists(object.name)) {
 										
-										if (Std.is (childSymbol, SpriteSymbol)) {
+										if (swfLite.symbols.exists (object.symbol)) {
 											
-											className = "openfl.display.MovieClip";
+											var childSymbol = swfLite.symbols.get (object.symbol);
+											var className = childSymbol.className;
 											
-										} else if (Std.is (childSymbol, ShapeSymbol)) {
+											if (className == null) {
+												
+												if (Std.is (childSymbol, SpriteSymbol)) {
+													
+													className = "openfl.display.MovieClip";
+													
+												} else if (Std.is (childSymbol, TagDefineBits) || Std.is (childSymbol, TagDefineBitsJPEG2) || Std.is (childSymbol, TagDefineBitsLossless)) {
+													
+													className = "openfl.display.BitmapData";
+													
+												} else if (Std.is (childSymbol, ShapeSymbol)) {
+													
+													className = "openfl.display.Shape";
+													
+												} else if (Std.is (childSymbol, BitmapSymbol)) {
+													
+													className = "openfl.display.Bitmap";
+													
+												} else if (Std.is (childSymbol, DynamicTextSymbol) || Std.is (childSymbol, StaticTextSymbol)) {
+													
+													className = "openfl.text.TextField";
+													
+												} else if (Std.is (childSymbol, ButtonSymbol)) {
+													
+													className = "openfl.display.SimpleButton";
+													
+												}
+												
+											}
 											
-											className = "openfl.display.Shape";
-											
-										} else if (Std.is (childSymbol, BitmapSymbol)) {
-											
-											className = "openfl.display.Bitmap";
-											
-										} else if (Std.is (childSymbol, DynamicTextSymbol) || Std.is (childSymbol, StaticTextSymbol)) {
-											
-											className = "openfl.text.TextField";
-											
-										} else if (Std.is (childSymbol, ButtonSymbol)) {
-											
-											className = "openfl.display.SimpleButton";
+											if (className != null) {
+												objectReferences[object.name] = true;
+												classProperties.push ( { name: object.name, type: className } );
+												
+											}
 											
 										}
 										
 									}
-									
-									if (className != null) {
-										
-										classProperties.push ( { name: object.name, type: className } );
-										
-									}
-									
 								}
-								
 							}
 							
 						}
@@ -437,14 +460,14 @@ class Tools {
 					
 				}
 				
-				var context = { PACKAGE_NAME: packageName, PACKAGE_NAME_DOT: packageNameDot, CLASS_NAME: name, SWF_ID: swfID, SYMBOL_ID: symbolID, PREFIX: "", CLASS_PROPERTIES: classProperties };
+				var context = { PACKAGE_NAME: packageName, NATIVE_CLASS_NAME: className, CLASS_NAME: name, SWF_ID: swfID, SYMBOL_ID: symbolID, PREFIX: "", CLASS_PROPERTIES: classProperties };
 				var template = new Template (templateData);
 				
 				var templateFile = new Asset ("", #if (lime >= "7.0.0") Path.combine #else PathHelper.combine #end (targetPath, Path.directory (symbol.className.split (".").join ("/"))) + "/" + name + ".hx", AssetType.TEMPLATE);
 				templateFile.data = template.execute (context);
 				output.push (templateFile);
 				
-				generatedClasses.push (className);
+				generatedClasses.push ((packageName.length > 0 ? packageName + "." : "") + name);
 				
 			}
 			
@@ -737,7 +760,7 @@ class Tools {
 		#end
 		
 		var data = AssetHelper.createManifest (project);
-		data.libraryType = "openfl._internal.swf.SWFLiteLibrary";
+		data.libraryType = "openfl._internal.formats.swf.SWFLiteLibrary";
 		data.libraryArgs = [ "swflite" + SWFLITE_DATA_SUFFIX, uuid ];
 		data.name = Path.withoutDirectory (Path.withoutExtension (sourcePath));
 		
@@ -820,7 +843,7 @@ class Tools {
 					}
 					
 					var data = AssetHelper.createManifest (output, library.name);
-					data.libraryType = "openfl._internal.swf.SWFLibrary";
+					data.libraryType = "openfl._internal.formats.swf.SWFLibrary";
 					data.libraryArgs = [ "lib/" + library.name + "/" + library.name + ".swf" ];
 					data.name = library.name;
 					
@@ -1090,7 +1113,7 @@ class Tools {
 					}
 					
 					var data = AssetHelper.createManifest (merge);
-					data.libraryType = "openfl._internal.swf.SWFLiteLibrary";
+					data.libraryType = "openfl._internal.formats.swf.SWFLiteLibrary";
 					data.libraryArgs = [ "lib/" + library.name + "/" + library.name + SWFLITE_DATA_SUFFIX ];
 					data.name = library.name;
 					
@@ -1133,8 +1156,8 @@ class Tools {
 			
 			output.haxedefs.set ("swf", "1");
 			
-			//output.haxeflags.push ("--macro include('openfl._internal.swf.SWFLiteLibrary')");
-			//output.haxeflags.push ("openfl._internal.swf.SWFLiteLibrary");
+			//output.haxeflags.push ("--macro include('openfl._internal.formats.swf.SWFLiteLibrary')");
+			//output.haxeflags.push ("openfl._internal.formats.swf.SWFLiteLibrary");
 			
 			//for (filterClass in filterClasses) {
 				

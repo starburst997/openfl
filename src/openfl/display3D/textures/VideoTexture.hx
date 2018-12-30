@@ -3,8 +3,6 @@ package openfl.display3D.textures; #if !flash
 
 import haxe.Timer;
 import lime.graphics.opengl.GLTexture;
-import openfl._internal.stage3D.opengl.GLVideoTexture;
-import openfl._internal.stage3D.GLUtils;
 import openfl.events.Event;
 import openfl.net.NetStream;
 
@@ -14,6 +12,7 @@ import openfl.net.NetStream;
 #end
 
 @:access(openfl.display3D.Context3D)
+@:access(openfl.display.Stage)
 @:access(openfl.net.NetStream)
 
 
@@ -30,7 +29,7 @@ import openfl.net.NetStream;
 		
 		super (context);
 		
-		GLVideoTexture.create (this, cast __context.__renderer);
+		__textureTarget = __context.gl.TEXTURE_2D;
 		
 	}
 	
@@ -67,11 +66,25 @@ import openfl.net.NetStream;
 	}
 	
 	
-	@:noCompletion private override function __getTexture ():GLTexture {
+@:noCompletion private override function __getTexture ():GLTexture {
+	
+	#if (js && html5)
+	
+	if ((!__netStream.__video.paused || __netStream.__seeking) && __netStream.__video.readyState > 0) {
 		
-		return GLVideoTexture.getTexture (this, cast __context.__renderer);
+		__netStream.__seeking = false;
+		var gl = __context.gl;
+		
+		__context.__bindGLTexture2D (__textureID);
+		gl.texImage2D (gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, __netStream.__video);
 		
 	}
+	
+	#end
+	
+	return __textureID;
+	
+}
 	
 	
 	@:noCompletion private function __textureReady ():Void {

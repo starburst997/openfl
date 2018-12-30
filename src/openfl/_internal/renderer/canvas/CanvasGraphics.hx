@@ -1,5 +1,7 @@
 package openfl._internal.renderer.canvas;
 
+
+import lime._internal.graphics.ImageCanvasUtil; // TODO
 import openfl.display.BitmapData;
 import openfl.display.BitmapDataChannel;
 import openfl.display.CanvasRenderer;
@@ -17,12 +19,6 @@ import openfl.geom.Point;
 import openfl.geom.Rectangle;
 import openfl.utils.ByteArray;
 import openfl.Vector;
-
-#if (lime >= "7.0.0")
-import lime._internal.graphics.ImageCanvasUtil; // TODO
-#else
-import lime.graphics.utils.ImageCanvasUtil;
-#end
 
 #if (js && html5)
 import js.html.CanvasElement;
@@ -62,6 +58,7 @@ class CanvasGraphics {
 	private static var pendingMatrix:Matrix;
 	private static var strokeCommands:DrawCommandBuffer = new DrawCommandBuffer ();
 	private static var windingRule:#if (js && html5) CanvasWindingRule #else Dynamic #end;
+	private static var worldAlpha:Float;
 	
 	#if (js && html5)
 	private static var context:CanvasRenderingContext2D;
@@ -883,7 +880,7 @@ class CanvasGraphics {
 					
 					var transform = graphics.__renderTransform;
 					// var roundPixels = renderer.__roundPixels;
-					var alpha = graphics.__owner.__worldAlpha;
+					var alpha = CanvasGraphics.worldAlpha;
 					
 					var ri, ti;
 					
@@ -1259,6 +1256,7 @@ class CanvasGraphics {
 			
 			CanvasGraphics.graphics = graphics;
 			CanvasGraphics.allowSmoothing = renderer.__allowSmoothing;
+			CanvasGraphics.worldAlpha = renderer.__getAlpha (graphics.__owner.__worldAlpha);
 			bounds = graphics.__bounds;
 			
 			var width = graphics.__width;
@@ -1722,12 +1720,9 @@ class CanvasGraphics {
 			
 		}
 		
-		if (untyped (context).imageSmoothingEnabled != smooth) {
+		if (context.imageSmoothingEnabled != smooth) {
 			
-			untyped (context).mozImageSmoothingEnabled = smooth;
-			//untyped (context).webkitImageSmoothingEnabled = smooth;
-			untyped (context).msImageSmoothingEnabled = smooth;
-			untyped (context).imageSmoothingEnabled = smooth;
+			context.imageSmoothingEnabled = smooth;
 			
 		}
 		

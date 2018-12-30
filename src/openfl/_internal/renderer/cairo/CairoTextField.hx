@@ -89,7 +89,7 @@ class CairoTextField {
 			
 		}
 		
-		if (width <= 0 || height <= 0 || (!textField.__dirty && !graphics.__dirty) || !renderable) {
+		if (width <= 0 || height <= 0 || (!textField.__dirty && !graphics.__dirty && (!graphics.__visible || graphics.__bitmap != null)) || !renderable) {
 			
 			textField.__dirty = false;
 			return;
@@ -351,6 +351,21 @@ class CairoTextField {
 							}
 							
 						}
+						
+					}
+					
+					if (group.format.underline) {
+						
+						// TODO: Use font underlinePosition/underlineThickness
+						
+						cairo.newPath ();
+						cairo.lineWidth = 1;
+						var x = group.offsetX + scrollX - bounds.x;
+						var y = Math.floor (group.offsetY + scrollY + group.ascent - bounds.y) + 0.5;
+						cairo.moveTo (x, y);
+						cairo.lineTo (x + group.width, y);
+						cairo.stroke ();
+						cairo.closePath ();
 						
 					}
 					

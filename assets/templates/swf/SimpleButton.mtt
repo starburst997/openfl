@@ -1,7 +1,7 @@
 package ::PACKAGE_NAME::; #if !flash
 
 
-import openfl._internal.swf.SWFLite;
+import openfl._internal.formats.swf.SWFLite;
 import openfl.display.SimpleButton;
 import openfl.Assets;
 
@@ -33,7 +33,7 @@ class ::CLASS_NAME:: extends SimpleButton {
 
 
 #else
-@:bind @:native("::CLASS_NAME::") class ::PREFIX::::CLASS_NAME:: extends flash.display.SimpleButton {
+@:bind @:native("::NATIVE_CLASS_NAME::") class ::CLASS_NAME:: extends flash.display.SimpleButton {
 	
 	
 	public function new () {

@@ -5,10 +5,10 @@ import openfl._internal.renderer.cairo.CairoBitmap;
 import openfl._internal.renderer.cairo.CairoDisplayObject;
 import openfl._internal.renderer.canvas.CanvasBitmap;
 import openfl._internal.renderer.canvas.CanvasDisplayObject;
+import openfl._internal.renderer.context3D.Context3DBitmap;
+import openfl._internal.renderer.context3D.Context3DDisplayObject;
 import openfl._internal.renderer.dom.DOMBitmap;
 import openfl._internal.renderer.dom.DOMDisplayObject;
-import openfl._internal.renderer.opengl.GLBitmap;
-import openfl._internal.renderer.opengl.GLDisplayObject;
 import openfl.geom.Matrix;
 import openfl.geom.Rectangle;
 
@@ -58,6 +58,7 @@ import js.html.ImageElement;
 @:access(openfl.display.BitmapData)
 @:access(openfl.display.Graphics)
 @:access(openfl.geom.ColorTransform)
+@:access(openfl.geom.Matrix)
 @:access(openfl.geom.Rectangle)
 
 
@@ -211,14 +212,14 @@ class Bitmap extends DisplayObject {
 	
 	@:noCompletion private override function __renderCairo (renderer:CairoRenderer):Void {
 		
+		#if lime_cairo
+		__updateCacheBitmap (renderer, /*!__worldColorTransform.__isDefault ()*/ false);
+		
 		if (__bitmapData != null && __bitmapData.image != null) {
 			
 			__imageVersion = __bitmapData.image.version;
 			
 		}
-		
-		#if lime_cairo
-		__updateCacheBitmap (renderer, /*!__worldColorTransform.__isDefault ()*/ false);
 		
 		if (__cacheBitmap != null && !__isCacheBitmapRender) {
 			
@@ -246,13 +247,13 @@ class Bitmap extends DisplayObject {
 	
 	@:noCompletion private override function __renderCanvas (renderer:CanvasRenderer):Void {
 		
+		__updateCacheBitmap (renderer, /*!__worldColorTransform.__isDefault ()*/ false);
+		
 		if (__bitmapData != null && __bitmapData.image != null) {
 			
 			__imageVersion = __bitmapData.image.version;
 			
 		}
-		
-		__updateCacheBitmap (renderer, /*!__worldColorTransform.__isDefault ()*/ false);
 		
 		if (__cacheBitmap != null && !__isCacheBitmapRender) {
 			
@@ -309,22 +310,22 @@ class Bitmap extends DisplayObject {
 	
 	@:noCompletion private override function __renderGL (renderer:OpenGLRenderer):Void {
 		
+		__updateCacheBitmap (renderer, false);
+		
 		if (__bitmapData != null && __bitmapData.image != null) {
 			
 			__imageVersion = __bitmapData.image.version;
 			
 		}
 		
-		__updateCacheBitmap (renderer, false);
-		
 		if (__cacheBitmap != null && !__isCacheBitmapRender) {
 			
-			GLBitmap.render (__cacheBitmap, renderer);
+			Context3DBitmap.render (__cacheBitmap, renderer);
 			
 		} else {
 			
-			GLDisplayObject.render (this, renderer);
-			GLBitmap.render (this, renderer);
+			Context3DDisplayObject.render (this, renderer);
+			Context3DBitmap.render (this, renderer);
 			
 		}
 		
@@ -335,7 +336,7 @@ class Bitmap extends DisplayObject {
 	
 	@:noCompletion private override function __renderGLMask (renderer:OpenGLRenderer):Void {
 		
-		GLBitmap.renderMask (this, renderer);
+		Context3DBitmap.renderMask (this, renderer);
 		
 	}
 	
@@ -344,8 +345,8 @@ class Bitmap extends DisplayObject {
 		
 		// TODO: Handle filters without an intermediate draw
 		
-		if (__filters == null && renderer.__type == OPENGL && __cacheBitmap == null) return false;
-		return super.__updateCacheBitmap (renderer, force);
+		if (__bitmapData == null || (__filters == null && renderer.__type == OPENGL && __cacheBitmap == null)) return false;
+		return super.__updateCacheBitmap (renderer, __bitmapData.image != null && __bitmapData.image.version != __imageVersion);
 		
 	}
 	

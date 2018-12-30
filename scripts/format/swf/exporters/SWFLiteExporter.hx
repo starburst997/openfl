@@ -9,8 +9,8 @@ import format.png.Writer;
 import format.swf.data.consts.BitmapFormat;
 import format.swf.data.consts.BlendMode;
 import format.swf.data.SWFButtonRecord;
-import openfl._internal.swf.FilterType;
-import openfl._internal.swf.ShapeCommand;
+import openfl._internal.formats.swf.FilterType;
+import openfl._internal.formats.swf.ShapeCommand;
 import format.swf.instance.Bitmap;
 #if hxp
 import hxp.Log;
@@ -26,10 +26,10 @@ import openfl._internal.symbols.ShapeSymbol;
 import openfl._internal.symbols.SpriteSymbol;
 import openfl._internal.symbols.StaticTextSymbol;
 import openfl._internal.symbols.SWFSymbol;
-import openfl._internal.timeline.Frame;
-import openfl._internal.timeline.FrameObject;
-import openfl._internal.timeline.FrameObjectType;
-import openfl._internal.swf.SWFLite;
+import openfl._internal.symbols.timeline.Frame;
+import openfl._internal.symbols.timeline.FrameObject;
+import openfl._internal.symbols.timeline.FrameObjectType;
+import openfl._internal.formats.swf.SWFLite;
 import format.swf.tags.IDefinitionTag;
 import format.swf.tags.TagDefineBits;
 import format.swf.tags.TagDefineBitsJPEG2;
@@ -885,7 +885,7 @@ class SWFLiteExporter {
 
 		}
 
-		return null;
+		return;
 
 	}	
 	
@@ -1087,12 +1087,12 @@ class SWFLiteExporter {
 										case ONull:
 											stack.push(null);
 										case OOp(op):
-											var operator = null;
+											var _operator = null;
 											switch (op) {
 												case OpMul:
-													operator = "*";
+													_operator = "*";
 												case OpAdd:
-													operator = "+";
+													_operator = "+";
 												case _:
 													Log.info ("", "OOp");
 											}
@@ -1102,10 +1102,10 @@ class SWFLiteExporter {
 												Log.info ("", "cast to " + stack.pop() + " is discarded");
 											}
 
-											if (operator != null)
+											if (_operator != null)
 											{
 												var temp = stack.pop();
-												stack.push(Std.string(stack.pop()) + " " + operator + " " + Std.string(temp));
+												stack.push(Std.string(stack.pop()) + " " + _operator + " " + Std.string(temp));
 											}
 										case OJump(j, delta):
 											switch (j) {
@@ -1132,8 +1132,18 @@ class SWFLiteExporter {
 								}
 								Log.info ("", "javascript:\n"+js);
 								
-								// store on SWFLite object for serialized .dat export
-								spriteSymbol.frames[frameNumOneIndexed-1].scriptSource = js;
+								if (js != null && js.indexOf ("null.") > -1) {
+									
+									Log.info ("", "Script appears to have been parsed improperly, discarding");
+									js = null;
+									
+								} else {
+									
+									// store on SWFLite object for serialized .dat export
+									spriteSymbol.frames[frameNumOneIndexed-1].scriptSource = js;
+									
+								}
+								
 							}
 						case _:
 					}

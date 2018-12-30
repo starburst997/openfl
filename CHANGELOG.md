@@ -1,3 +1,131 @@
+8.7.0 (12/04/2018)
+------------------
+
+* Updated to Lime 7.2.*
+* Added `stage.fullScreenSourceRect` support
+* Added initial `tile.getBounds` and `tile.hitTestTile` APIs
+* Added support for using `<tab>` to set focus (`tabIndex`, `tabChildren` etc)
+* Improved several internal APIs for better memory and performance
+* Improved the quality of `DropShadowFilter` and `GlowFilter`
+* Improved `DisplacementMapFilter` to support software rendering
+* Improved support for Haxe 4 preview 5
+* Improved the behavior of `simpleButton.enabled` and `simpleButton.mouseEnabled`
+* Improved the behavior of `movieClip.buttonMode`
+* Improved the behavior of `MouseEvent.RELEASE_OUTSIDE`
+* Improved the quality of `bitmapData.perlinNoise`
+* Improved the rendering of `cacheAsBitmap` objects with alpha
+* Improved the GL renderer to respect `StageQuality.LOW` to disable smoothing
+* Improved the standard index.html template for cases when the window is transparent
+* Improved rendering in `TextField` with underlined text
+* Improved handling of HTML5 text when we know the font ascent/descent at compile-time
+* Improved `MovieClip` framescript timing and reliability
+* Improved SWF class generation with additional properties and more reliability
+* Fixed setting transforms for `cacheAsBitmap` objects
+* Fixed an internal issue when pooling `ColorTransform` that could fail in recursion
+* Fixed the `TextFormat` extern types to not have an extra field
+* Fixed texture upload for HTML5 video when video was not ready yet
+* Fixed a regression when performing the letterboxing logic on non-resizable windows
+* Fixed an issue where fonts on native targets had the wrong baseline
+* Fixed incorrect handling of transforms for same frames in SWF timeline animations
+
+
+8.6.4 (10/19/2018)
+------------------
+
+* Improved ES module imports at top-level by making all types available
+
+
+8.6.3 (10/19/2018)
+------------------
+
+* Set Lime to use a hard-coded version (unless -Ddisable-version-check)
+* Improved updating of `Stage3D` `VideoTexture` when video is seeking
+* Fixed cache invalidation in `Bitmap` when using `filters`
+* Fixed how `Context3D` scissoring was handled in non-shared `Stage3D` context
+* Fixed some issues with software `GlowFilter` and `DropShadowFilter`
+
+
+8.6.2 (10/15/2018)
+------------------
+
+* Fixed an issue when using custom WebGL rendering in NPM version
+* Fixed an issue in NPM samples that do not size the stage immediately
+
+
+8.6.1 (10/15/2018)
+------------------
+
+* Fixed use of `VideoTexture` with cube geometry
+* Fixed a regression in the behavior of `scrollRect`
+* Fixed an issue where the bottom of some HTML5 text could be cut off
+* Fixed issues when applying `DropShadowFilter` to `TextField` in software
+
+
+8.6.0 (10/12/2018)
+------------------
+
+* Added initial support for `PixelSnapping` in hardware rendering
+* Added initial support for `DisplacementMapFilter` (hardware only)
+* Added `generate="true"` support for SWF `BitmapData` symbols
+* Improved `BitmapData.fromFile` (and similar methods) when an image fails to load
+* Improved texture smoothing behavior for hardware shader filters
+* Improved synchronization between display list shaders and `Stage3D` shader programs
+* Fixed a regression where `TextField` could fail to render on hardware
+* Fixed a regression in the behavior of `textField.getTextFormat` with default parameters
+* Fixed the clip rectangle for `sprite.scrollRect` on hardware rendering
+* Fixed `stage.color` to return a 32-bit value
+* Fixed `Context3D` scissoring with a width or height of 0
+* Fixed an issue where `scrollRect` could show a pixel improperly
+* Fixed issues when compiling using `-Dtelemetry`
+* Fixed a Haxe 4 compiler deprecation warning
+
+
+8.5.1 (09/27/2018)
+-----------------
+
+* Improved handling of context loss if context is not restored by the next frame
+* Fixed a regression in indexed hardware `graphics.drawTriangles` rendering
+* Fixed minor compile errors when using some optional defines
+
+
+8.5.0 (09/26/2018)
+------------------
+
+* Migrated OpenGL rendering internally to use `Stage3D` instead of calling GL directly
+* Added support for multiple `Stage3D` instances (initially 2 on mobile, 4 on desktop)
+* Added OpenGL state caching in `Context3D` (unless `-Dopenfl-disable-context-cache`)
+* Added `Context3DProgramFormat`, with initial support for GLSL shaders in `Context3D`
+* Added `stage.context3D`, present when hardware acceleration is enabled
+* Added pressure values to `TouchEvent`
+* Added `application.meta.version` to the default application template
+* Added `PerspectiveMatrix3D` to `openfl.utils`
+* Removed prefixes on `imageSmoothingEnabled` internally to remove HTML5 warnings
+* Removed types deprecated since OpenFL 8.0
+* Improved performance in `drawQuads` and `Tilemap` when using a hardware renderer
+* Improved shaders to use `highp` float values when available
+* Improved each `Stage3D` to use its own buffers (unless `-Dopenfl-share-context`)
+* Improved `Font.registerFont` to allow registering font instances in addition to classes
+* Improved HTML5 font rendering to use font ascender/descender values if present
+* Fixed a regression in `TextField` clipping when using `scrollX`
+* Fixed support for OpenGL-based video on HTML5
+* Fixed many issues related to `Stage3D` state conflicts with the display list renderer
+* Fixed compilation issues in Haxe 4 development builds
+* Fixed an issue where hardware `cacheAsBitmap` could result in blank textures
+* Fixed dispatch of `MOUSE_MOVE` event before dispatching `MOUSE_LEAVE`
+* Fixed a regression in setting `displayObject.alpha` when changing its `colorTransform`
+* Fixed a regression in the visibility of the mouse cursor when using `Mouse.hide`
+* Fixed a regression in setting `event.target` on events dispatched from the display list
+
+
+8.4.1 (08/13/2018)
+------------------
+
+* Fixed an issue where the Flash preloader could dispatch complete multiple times
+* Fixed a regression in processing SWF assets for Haxelib releases
+* Fixed an issue with stenciling on Stage3D projects that use display list masks
+* Fixed the value of `ExternalInterface.objectID` on single HTML5 embeds
+
+
 8.4.0 (08/08/2018)
 ------------------
 

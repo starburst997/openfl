@@ -3,8 +3,8 @@ package openfl.display; #if !flash
 
 import openfl._internal.renderer.cairo.CairoGraphics;
 import openfl._internal.renderer.canvas.CanvasGraphics;
-import openfl._internal.renderer.opengl.GLGraphics;
-import openfl._internal.renderer.opengl.GLShape;
+import openfl._internal.renderer.context3D.Context3DGraphics;
+import openfl._internal.renderer.context3D.Context3DShape;
 import openfl.display.Stage;
 import openfl.errors.ArgumentError;
 import openfl.errors.RangeError;
@@ -96,12 +96,13 @@ class DisplayObjectContainer extends InteractiveObject {
 	 *                               throws an exception. The Stage object does
 	 *                               not implement this property.
 	 */
-	public var tabChildren:Bool;
+	public var tabChildren(get, set):Bool;
 	
 	// @:noCompletion @:dox(hide) public var textSnapshot (default, never):flash.text.TextSnapshot;
 	
 	
 	@:noCompletion private var __removedChildren:Vector<DisplayObject>;
+	@:noCompletion private var __tabChildren:Bool;
 	
 	
 	#if openfljs
@@ -128,6 +129,7 @@ class DisplayObjectContainer extends InteractiveObject {
 		super ();
 		
 		mouseChildren = true;
+		__tabChildren = true;
 		
 		__children = new Array<DisplayObject> ();
 		__removedChildren = new Vector<DisplayObject> ();
@@ -676,7 +678,7 @@ class DisplayObjectContainer extends InteractiveObject {
 	}
 	
 	
-	override function __cleanup ():Void {
+	@:noCompletion private override function __cleanup ():Void {
 		
 		super.__cleanup ();
 		
@@ -691,7 +693,7 @@ class DisplayObjectContainer extends InteractiveObject {
 	}
 	
 	
-	inline function __cleanupRemovedChildren () {
+	@:noCompletion private inline function __cleanupRemovedChildren ():Void {
 		
 		for (orphan in __removedChildren) {
 			
@@ -903,11 +905,20 @@ class DisplayObjectContainer extends InteractiveObject {
 			
 		} else {
 			
+			var hitTest = false;
+			
 			while (--i >= 0) {
 				
-				__children[i].__hitTest (x, y, shapeFlag, stack, false, cast __children[i]);
+				if (__children[i].__hitTest (x, y, shapeFlag, stack, false, cast __children[i])) {
+					
+					hitTest = true;
+					if (stack == null) break;
+					
+				}
 				
 			}
+			
+			return hitTest;
 			
 		}
 		
@@ -1175,8 +1186,8 @@ class DisplayObjectContainer extends InteractiveObject {
 		
 		if (__graphics != null) {
 			
-			//GLGraphics.renderMask (__graphics, renderer);
-			GLShape.renderMask (this, renderer);
+			//Context3DGraphics.renderMask (__graphics, renderer);
+			Context3DShape.renderMask (this, renderer);
 			
 		}
 		
@@ -1260,6 +1271,30 @@ class DisplayObjectContainer extends InteractiveObject {
 	}
 	
 	
+	@:noCompletion private override function __tabTest (stack:Array<InteractiveObject>):Void {
+		
+		super.__tabTest (stack);
+		
+		if (!tabChildren) return;
+		
+		var interactive = false;
+		var interactiveObject:InteractiveObject = null;
+		
+		for (child in __children) {
+			
+			interactive = child.__getInteractive (null);
+			
+			if (interactive) {
+				
+				interactiveObject = cast child;
+				interactiveObject.__tabTest (stack);
+				
+			}
+		}
+		
+	}
+	
+	
 	@:noCompletion private override function __update (transformOnly:Bool, updateChildren:Bool):Void {
 		
 		super.__update (transformOnly, updateChildren);
@@ -1287,6 +1322,27 @@ class DisplayObjectContainer extends InteractiveObject {
 	@:noCompletion private function get_numChildren ():Int {
 		
 		return __children.length;
+		
+	}
+	
+	
+	@:noCompletion private function get_tabChildren ():Bool {
+		
+		return __tabChildren;
+		
+	}
+	
+	
+	@:noCompletion private function set_tabChildren (value:Bool):Bool {
+		
+		if (__tabChildren != value) {
+			
+			__tabChildren = value;
+			
+			dispatchEvent (new Event (Event.TAB_CHILDREN_CHANGE, true, false));
+		}
+		
+		return __tabChildren;
 		
 	}
 	

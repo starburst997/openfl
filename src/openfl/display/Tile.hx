@@ -14,7 +14,7 @@ import openfl.geom.Rectangle;
 @:access(openfl.geom.Matrix)
 @:access(openfl.geom.Rectangle)
 
-class Tile #if ((openfl < "9.0.0") && enable_tile_array) implements ITile #end {
+class Tile {
 	
 	
 	public var alpha (get, set):Float;
@@ -162,16 +162,15 @@ class Tile #if ((openfl < "9.0.0") && enable_tile_array) implements ITile #end {
 			result = tileset.getRect (id);
 			
 		}
-
+		
 		result.x = 0;
 		result.y = 0;
-
+		
 		//Copied from DisplayObject
 		var matrix = #if flash __tempMatrix #else Matrix.__pool.get () #end;
+		matrix.copyFrom (__getWorldTransform ());
 		
 		if (targetCoordinateSpace != null && targetCoordinateSpace != this) {
-			
-			matrix.copyFrom (__getWorldTransform ());
 			
 			var targetMatrix = #if flash new Matrix () #else Matrix.__pool.get () #end;
 			
@@ -183,10 +182,6 @@ class Tile #if ((openfl < "9.0.0") && enable_tile_array) implements ITile #end {
 			#if !flash
 			Matrix.__pool.release (targetMatrix);
 			#end
-			
-		} else {
-			
-			matrix.copyFrom (__getWorldTransform ());
 			
 		}
 		
@@ -279,6 +274,26 @@ class Tile #if ((openfl < "9.0.0") && enable_tile_array) implements ITile #end {
 	}
 	
 	
+	/**
+	 * Climbs all the way up to get a transformation matrix
+	 * adds his own matrix and then returns it.
+	 * @return Matrix The final transformation matrix from stage to this point.
+	 */
+	@:noCompletion private function __getWorldTransform ():Matrix {
+		
+		var retval = matrix.clone ();
+		
+		if (parent != null) {
+			
+			retval.concat (parent.__getWorldTransform ());
+			
+		}
+		
+		return retval;
+		
+	}
+	
+	
 	@:noCompletion private function __setRenderDirty ():Void {
 		
 		#if !flash
@@ -297,21 +312,7 @@ class Tile #if ((openfl < "9.0.0") && enable_tile_array) implements ITile #end {
 		
 	}
 	
-	
-	/**
-	 * Climbs all the way up to get a transformation matrix
-	 * adds his own matrix and then returns it.
-	 * @return Matrix The final transformation matrix from stage to this point.
-	 */
-	private function __getWorldTransform():Matrix
-	{
-		var retval = matrix.clone();
-		if (parent != null)
-		{
-			retval.concat(parent.__getWorldTransform());
-		}
-		return retval;
-	}
+
 	
 	// Get & Set Methods
 	

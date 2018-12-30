@@ -2,9 +2,11 @@ package openfl.display; #if !flash
 
 
 import haxe.CallStack;
+import haxe.ds.ArraySort;
 import lime.app.Application;
 import lime.app.IModule;
 import lime.graphics.RenderContext;
+import lime.graphics.RenderContextType;
 import lime.ui.Touch;
 import lime.ui.Gamepad;
 import lime.ui.GamepadAxis;
@@ -13,13 +15,18 @@ import lime.ui.Joystick;
 import lime.ui.JoystickHatPosition;
 import lime.ui.KeyCode;
 import lime.ui.KeyModifier;
-import lime.ui.MouseCursor in LimeMouseCursor;
+import lime.ui.MouseCursor as LimeMouseCursor;
+import lime.ui.MouseWheelMode;
 import lime.ui.Window;
 import lime.utils.Log;
-import openfl._internal.TouchData;
-import openfl.display.Application in OpenFLApplication;
+import openfl._internal.renderer.context3D.Context3DBitmap;
+import openfl._internal.utils.TouchData;
+import openfl.display3D.Context3DClearMask;
+import openfl.display3D.Context3D;
+import openfl.display.Application as OpenFLApplication;
 import openfl.display.DisplayObjectContainer;
 import openfl.display.Window in OpenFLWindow;
+import openfl.errors.IllegalOperationError;
 import openfl.events.Event;
 import openfl.events.EventDispatcher;
 import openfl.events.EventPhase;
@@ -39,21 +46,12 @@ import openfl.ui.Keyboard;
 import openfl.ui.Mouse;
 import openfl.ui.MouseCursor;
 
-#if (lime >= "7.0.0")
-import lime.graphics.RenderContextType;
-import lime.ui.MouseWheelMode;
-#else
-import lime.app.Preloader;
-import lime.graphics.Renderer;
-import lime.ui.Mouse in LimeMouse;
-#end
-
 #if hxtelemetry
 import openfl.profiler.Telemetry;
 #end
 
 #if gl_stats
-import openfl._internal.renderer.opengl.stats.GLStats;
+import openfl._internal.renderer.context3D.stats.Context3DStats;
 #end
 
 #if (js && html5)
@@ -188,11 +186,13 @@ typedef Element = Dynamic;
 @:noDebug
 #end
 
+@:access(openfl.display3D.Context3D)
 @:access(openfl.display.DisplayObjectRenderer)
 @:access(openfl.display.LoaderInfo)
 @:access(openfl.display.Sprite)
 @:access(openfl.display.Stage3D)
 @:access(openfl.events.Event)
+@:access(openfl.geom.Matrix)
 @:access(openfl.geom.Point)
 @:access(openfl.ui.GameInput)
 @:access(openfl.ui.Keyboard)
@@ -239,6 +239,8 @@ class Stage extends DisplayObjectContainer implements IModule {
 	// @:noCompletion @:dox(hide) @:require(flash10) public var colorCorrectionSupport (default, null):flash.display.ColorCorrectionSupport;
 	
 	public var contentsScaleFactor (get, never):Float;
+	
+	public var context3D (default, null):Context3D;
 	
 	// @:noCompletion @:dox(hide) @:require(flash11) public var displayContextInfo (default, null):String;
 	
@@ -376,9 +378,9 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	public var fullScreenHeight (get, never):UInt;
 	
-	// @:noCompletion @:dox(hide) public var fullScreenSourceRect:Rectangle;
-	
 	public var fullScreenWidth (get, never):UInt;
+	
+	public var fullScreenSourceRect (get, set):Rectangle;
 	
 	// @:noCompletion @:dox(hide) @:require(flash11_2) public var mouseLock:Bool;
 	
@@ -593,12 +595,14 @@ class Stage extends DisplayObjectContainer implements IModule {
 	@:noCompletion private var __colorSplit:Array<Float>;
 	@:noCompletion private var __colorString:String;
 	@:noCompletion private var __contentsScaleFactor:Float;
+	@:noCompletion private var __currentTabOrderIndex:Int;
 	#if (commonjs && !nodejs)
 	@:noCompletion private var __cursor:LimeMouseCursor;
 	#end
 	@:noCompletion private var __deltaTime:Int;
 	@:noCompletion private var __dirty:Bool;
 	@:noCompletion private var __displayMatrix:Matrix;
+	@:noCompletion private var __displayRect:Rectangle;
 	@:noCompletion private var __displayState:StageDisplayState;
 	@:noCompletion private var __dragBounds:Rectangle;
 	@:noCompletion private var __dragObject:Sprite;
@@ -607,6 +611,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	@:noCompletion private var __focus:InteractiveObject;
 	@:noCompletion private var __forceRender:Bool;
 	@:noCompletion private var __fullscreen:Bool;
+	@:noCompletion private var __fullScreenSourceRect:Rectangle;
 	@:noCompletion private var __invalidated:Bool;
 	@:noCompletion private var __lastClickTime:Int;
 	@:noCompletion private var __logicalWidth:Int;
@@ -663,11 +668,12 @@ class Stage extends DisplayObjectContainer implements IModule {
 		super ();
 		
 		this.name = null;
-	
-		__color = 0xFFFFFF;
+		
+		__color = 0xFFFFFFFF;
 		__colorSplit = [ 0xFF, 0xFF, 0xFF ];
 		__colorString = "#FFFFFF";
 		__contentsScaleFactor = 1;
+		__currentTabOrderIndex = 0;
 		__deltaTime = 0;
 		__displayState = NORMAL;
 		__mouseX = 0;
@@ -676,10 +682,13 @@ class Stage extends DisplayObjectContainer implements IModule {
 		__logicalWidth = 0;
 		__logicalHeight = 0;
 		__displayMatrix = new Matrix ();
+		__displayRect = new Rectangle ();
 		__renderDirty = true;
 		
 		stage3Ds = new Vector ();
-		stage3Ds.push (new Stage3D ());
+		for (i in 0...#if mobile 2 #else 4 #end) {
+			stage3Ds.push (new Stage3D (this));
+		}
 		
 		this.stage = this;
 		
@@ -740,7 +749,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 			windowAttributes.element = element;
 			windowAttributes.resizable = resizable;
 			
-			#if (lime >= "7.0.0")
 			windowAttributes.stage = this;
 			
 			if (!Reflect.hasField (windowAttributes, "context")) windowAttributes.context = {};
@@ -760,25 +768,9 @@ class Stage extends DisplayObjectContainer implements IModule {
 			if (!Reflect.hasField (contextAttributes, "stencil")) contextAttributes.stencil = true;
 			if (!Reflect.hasField (contextAttributes, "depth")) contextAttributes.depth = true;
 			if (!Reflect.hasField (contextAttributes, "background")) contextAttributes.background = null;
-			#else
-			if (!Reflect.hasField (windowAttributes, "stencilBuffer")) windowAttributes.stencilBuffer = true;
-			if (!Reflect.hasField (windowAttributes, "depthBuffer")) windowAttributes.depthBuffer = true;
-			if (!Reflect.hasField (windowAttributes, "background")) windowAttributes.background = null;
-			#end
-			
-			#if (lime >= "7.0.0")
 			
 			app = new OpenFLApplication ();
 			window = app.createWindow (windowAttributes);
-			
-			#else
-			window = new Window (windowConfig);
-			window.stage = this;
-			
-			app = new Application ();
-			app.create ({});
-			app.createWindow (window);
-			#end
 			
 			this.color = color;
 			
@@ -854,6 +846,8 @@ class Stage extends DisplayObjectContainer implements IModule {
 	public override function invalidate ():Void {
 		
 		__invalidated = true;
+		
+		// TODO: Should this not mark as dirty?
 		__renderDirty = true;
 		
 	}
@@ -869,131 +863,131 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onGamepadAxisMove (gamepad:Gamepad, axis:GamepadAxis, value:Float):Void {
+	@:noCompletion @:dox(hide) public function onGamepadAxisMove (gamepad:Gamepad, axis:GamepadAxis, value:Float):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			GameInput.__onGamepadAxisMove (gamepad, axis, value);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 	}
 	
 	
-	public function onGamepadButtonDown (gamepad:Gamepad, button:GamepadButton):Void {
+	@:noCompletion @:dox(hide) public function onGamepadButtonDown (gamepad:Gamepad, button:GamepadButton):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			GameInput.__onGamepadButtonDown (gamepad, button);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 	}
 	
 	
-	public function onGamepadButtonUp (gamepad:Gamepad, button:GamepadButton):Void {
+	@:noCompletion @:dox(hide) public function onGamepadButtonUp (gamepad:Gamepad, button:GamepadButton):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			GameInput.__onGamepadButtonUp (gamepad, button);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 	}
 	
 	
-	public function onGamepadConnect (gamepad:Gamepad):Void {
+	@:noCompletion @:dox(hide) public function onGamepadConnect (gamepad:Gamepad):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			GameInput.__onGamepadConnect (gamepad);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 	}
 	
 	
-	public function onGamepadDisconnect (gamepad:Gamepad):Void {
+	@:noCompletion @:dox(hide) public function onGamepadDisconnect (gamepad:Gamepad):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			GameInput.__onGamepadDisconnect (gamepad);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 	}
 	
 	
-	public function onJoystickAxisMove (joystick:Joystick, axis:Int, value:Float):Void {
-		
-		
-		
-	}
-	
-	
-	public function onJoystickButtonDown (joystick:Joystick, button:Int):Void {
+	@:noCompletion @:dox(hide) public function onJoystickAxisMove (joystick:Joystick, axis:Int, value:Float):Void {
 		
 		
 		
 	}
 	
 	
-	public function onJoystickButtonUp (joystick:Joystick, button:Int):Void {
+	@:noCompletion @:dox(hide) public function onJoystickButtonDown (joystick:Joystick, button:Int):Void {
 		
 		
 		
 	}
 	
 	
-	public function onJoystickConnect (joystick:Joystick):Void {
+	@:noCompletion @:dox(hide) public function onJoystickButtonUp (joystick:Joystick, button:Int):Void {
 		
 		
 		
 	}
 	
 	
-	public function onJoystickDisconnect (joystick:Joystick):Void {
+	@:noCompletion @:dox(hide) public function onJoystickConnect (joystick:Joystick):Void {
 		
 		
 		
 	}
 	
 	
-	public function onJoystickHatMove (joystick:Joystick, hat:Int, position:JoystickHatPosition):Void {
+	@:noCompletion @:dox(hide) public function onJoystickDisconnect (joystick:Joystick):Void {
 		
 		
 		
 	}
 	
 	
-	public function onJoystickTrackballMove (joystick:Joystick, trackball:Int, value:Float):Void {
+	@:noCompletion @:dox(hide) public function onJoystickHatMove (joystick:Joystick, hat:Int, position:JoystickHatPosition):Void {
 		
 		
 		
 	}
 	
 	
-	public function onKeyDown (window:Window, keyCode:KeyCode, modifier:KeyModifier):Void {
+	@:noCompletion @:dox(hide) public function onJoystickTrackballMove (joystick:Joystick, trackball:Int, value:Float):Void {
+		
+		
+		
+	}
+	
+	
+	@:noCompletion @:dox(hide) public function onKeyDown (window:Window, keyCode:KeyCode, modifier:KeyModifier):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1002,7 +996,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onKeyUp (window:Window, keyCode:KeyCode, modifier:KeyModifier):Void {
+	@:noCompletion @:dox(hide) public function onKeyUp (window:Window, keyCode:KeyCode, modifier:KeyModifier):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1011,7 +1005,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onModuleExit (code:Int):Void {
+	@:noCompletion @:dox(hide) public function onModuleExit (code:Int):Void {
 		
 		if (window != null) {
 			
@@ -1022,7 +1016,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onMouseDown (window:Window, x:Float, y:Float, button:Int):Void {
+	@:noCompletion @:dox(hide) public function onMouseDown (window:Window, x:Float, y:Float, button:Int):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1041,7 +1035,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onMouseMove (window:Window, x:Float, y:Float):Void {
+	@:noCompletion @:dox(hide) public function onMouseMove (window:Window, x:Float, y:Float):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1056,14 +1050,14 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onMouseMoveRelative (window:Window, x:Float, y:Float):Void {
+	@:noCompletion @:dox(hide) public function onMouseMoveRelative (window:Window, x:Float, y:Float):Void {
 		
 		//if (this.window == null || this.window != window) return;
 		
 	}
 	
 	
-	public function onMouseUp (window:Window, x:Float, y:Float, button:Int):Void {
+	@:noCompletion @:dox(hide) public function onMouseUp (window:Window, x:Float, y:Float, button:Int):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1088,13 +1082,12 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onMouseWheel (window:Window, deltaX:Float, deltaY:Float #if (lime >= "7.0.0"), deltaMode:MouseWheelMode #end):Void {
+	@:noCompletion @:dox(hide) public function onMouseWheel (window:Window, deltaX:Float, deltaY:Float, deltaMode:MouseWheelMode):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
 		__dispatchPendingMouseEvent ();
 		
-		#if (lime >= "7.0.0")
 		if (deltaMode == PIXELS) {
 			
 			__onMouseWheel (Std.int (deltaX * window.scale), Std.int (deltaY * window.scale), deltaMode);
@@ -1104,49 +1097,46 @@ class Stage extends DisplayObjectContainer implements IModule {
 			__onMouseWheel (Std.int (deltaX), Std.int (deltaY), deltaMode);
 			
 		}
-		#else
-		__onMouseWheel (Std.int (deltaX * window.scale), Std.int (deltaY * window.scale));
-		#end
 		
 	}
 	
 	
-	public function onPreloadComplete ():Void {
-		
-		
-		
-	}
-	
-	
-	public function onPreloadProgress (loaded:Int, total:Int):Void {
+	@:noCompletion @:dox(hide) public function onPreloadComplete ():Void {
 		
 		
 		
 	}
 	
 	
-	public function onRenderContextLost (#if (lime < "7.0.0") renderer:Renderer #end):Void {
+	@:noCompletion @:dox(hide) public function onPreloadProgress (loaded:Int, total:Int):Void {
+		
+		
+		
+	}
+	
+	
+	@:noCompletion @:dox(hide) public function onRenderContextLost ():Void {
 		
 		__renderer = null;
 		
 	}
 	
 	
-	public function onRenderContextRestored (#if (lime < "7.0.0") renderer:Renderer, #end context:RenderContext):Void {
+	@:noCompletion @:dox(hide) public function onRenderContextRestored (context:RenderContext):Void {
 		
 		__createRenderer ();
 		
 	}
 	
 	
-	public function onTextEdit (window:Window, text:String, start:Int, length:Int):Void {
+	@:noCompletion @:dox(hide) public function onTextEdit (window:Window, text:String, start:Int, length:Int):Void {
 		
 		//if (this.window == null || this.window != window) return;
 		
 	}
 	
 	
-	public function onTextInput (window:Window, text:String):Void {
+	@:noCompletion @:dox(hide) public function onTextInput (window:Window, text:String):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1183,14 +1173,9 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onTouchMove (touch:Touch):Void {
+	@:noCompletion @:dox(hide) public function onTouchCancel (touch:Touch):Void {
 		
-		__onTouch (TouchEvent.TOUCH_MOVE, touch);
-		
-	}
-	
-	
-	public function onTouchEnd (touch:Touch):Void {
+		// TODO: Should we handle this differently?
 		
 		if (__primaryTouch == touch) {
 			
@@ -1203,7 +1188,27 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onTouchStart (touch:Touch):Void {
+	@:noCompletion @:dox(hide) public function onTouchMove (touch:Touch):Void {
+		
+		__onTouch (TouchEvent.TOUCH_MOVE, touch);
+		
+	}
+	
+	
+	@:noCompletion @:dox(hide) public function onTouchEnd (touch:Touch):Void {
+		
+		if (__primaryTouch == touch) {
+			
+			__primaryTouch = null;
+			
+		}
+		
+		__onTouch (TouchEvent.TOUCH_END, touch);
+		
+	}
+	
+	
+	@:noCompletion @:dox(hide) public function onTouchStart (touch:Touch):Void {
 		
 		if (__primaryTouch == null) {
 			
@@ -1216,7 +1221,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowActivate (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowActivate (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1225,7 +1230,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowClose (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowClose (window:Window):Void {
 		
 		if (this.window == window) {
 			
@@ -1239,11 +1244,11 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowCreate (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowCreate (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
-		if (#if (lime >= "7.0.0") window.context != null #else window.renderer != null #end) {
+		if (window.context != null) {
 			
 			__createRenderer ();
 			
@@ -1252,7 +1257,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowDeactivate (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowDeactivate (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1262,21 +1267,21 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowDropFile (window:Window, file:String):Void {
+	@:noCompletion @:dox(hide) public function onWindowDropFile (window:Window, file:String):Void {
 		
 		
 		
 	}
 	
 	
-	public function onWindowEnter (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowEnter (window:Window):Void {
 		
 		//if (this.window == null || this.window != window) return;
 		
 	}
 	
 	
-	public function onWindowExpose (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowExpose (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1285,11 +1290,15 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowFocusIn (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowFocusIn (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
+		#if !desktop
+		// TODO: Is this needed?
 		__renderDirty = true;
+		#end
+		
 		__broadcastEvent (new Event (Event.ACTIVATE));
 		
 		#if !desktop
@@ -1299,7 +1308,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowFocusOut (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowFocusOut (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1313,7 +1322,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowFullscreen (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowFullscreen (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1330,16 +1339,17 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowLeave (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowLeave (window:Window):Void {
 		
 		if (this.window == null || this.window != window || MouseEvent.__buttonDown) return;
 		
+		__dispatchPendingMouseEvent ();
 		__dispatchEvent (new Event (Event.MOUSE_LEAVE));
 		
 	}
 	
 	
-	public function onWindowMinimize (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowMinimize (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1349,14 +1359,14 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowMove (window:Window, x:Float, y:Float):Void {
+	@:noCompletion @:dox(hide) public function onWindowMove (window:Window, x:Float, y:Float):Void {
 		
 		//if (this.window == null || this.window != window) return;
 		
 	}
 	
 	
-	public function onWindowResize (window:Window, width:Int, height:Int):Void {
+	@:noCompletion @:dox(hide) public function onWindowResize (window:Window, width:Int, height:Int):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1380,7 +1390,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function onWindowRestore (window:Window):Void {
+	@:noCompletion @:dox(hide) public function onWindowRestore (window:Window):Void {
 		
 		if (this.window == null || this.window != window) return;
 		
@@ -1395,11 +1405,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function render (#if (lime >= "7.0.0") context:RenderContext #else renderer:Renderer #end):Void {
-		
-		#if (lime < "7.0.0")
-		if (renderer.window == null || renderer.window != window) return;
-		#end
+	@:noCompletion @:dox(hide) public function render (context:RenderContext):Void {
 		
 		if (__rendering) return;
 		__rendering = true;
@@ -1409,22 +1415,20 @@ class Stage extends DisplayObjectContainer implements IModule {
 		#end
 		
 		#if gl_stats
-			GLStats.resetDrawCalls();
+			Context3DStats.resetDrawCalls();
 		#end
-		
-		if (__renderer != null && (Stage3D.__active || stage3Ds[0].__contextRequested)) {
-			
-			__renderer.__clear ();
-			__renderer.__renderStage3D (this);
-			__renderDirty = true;
-			
-		}
 		
 		__broadcastEvent (new Event (Event.ENTER_FRAME));
 		__broadcastEvent (new Event (Event.FRAME_CONSTRUCTED));
 		__broadcastEvent (new Event (Event.EXIT_FRAME));
 		
-		if (__invalidated) {
+		__renderable = true;
+		__enterFrame (__deltaTime);
+		__deltaTime = 0;
+		
+		var shouldRender = #if !openfl_disable_display_render (__renderer != null #if !openfl_always_render && (__renderDirty || __forceRender) #end) #else false #end;
+		
+		if (__invalidated && shouldRender) {
 			
 			__invalidated = false;
 			__broadcastEvent (new Event (Event.RENDER));
@@ -1436,49 +1440,65 @@ class Stage extends DisplayObjectContainer implements IModule {
 		Telemetry.__startTiming (TelemetryCommandName.RENDER);
 		#end
 		
-		__renderable = true;
-		
-		__enterFrame (__deltaTime);
-		__deltaTime = 0;
 		__update (false, true);
 		
-		if (__renderer != null #if !openfl_always_render && (__renderDirty || __forceRender) #end) {
+		if (__renderer != null) {
 			
-			if (!Stage3D.__active) {
+			if (context3D != null) {
 				
-				__renderer.__clear ();
-				
-			}
-			
-			if (__renderer.__type == CAIRO) {
-				
-				#if lime_cairo
-				#if (lime >= "7.0.0")
-				cast (__renderer, CairoRenderer).cairo = context.cairo;
-				#else
-				switch (renderer.context) {
+				for (stage3D in stage3Ds) {
 					
-					case CAIRO (cairo):
-						
-						cast (__renderer, CairoRenderer).cairo = cairo;
-					
-					default:
+					context3D.__renderStage3D (stage3D);
 					
 				}
-				#end
-				#end
+				
+				#if !openfl_disable_display_render if (context3D.__present) shouldRender = true; #end
 				
 			}
 			
-			__renderer.__render (this);
+			if (shouldRender) {
+				
+				if (__renderer.__type == CAIRO) {
+					
+					#if lime_cairo
+					cast (__renderer, CairoRenderer).cairo = context.cairo;
+					#end
+					
+				}
+				
+				if (context3D == null) {
+					
+					__renderer.__clear ();
+					
+				}
+				
+				__renderer.__render (this);
+				
+			} else if (context3D == null) {
+				
+				window.onRender.cancel ();
+				
+			}
 			
-		} else {
+			if (context3D != null) {
+				
+				if (!context3D.__present) {
+					
+					window.onRender.cancel ();
+					
+				} else {
+					
+					if (!__renderer.__cleared) {
+						__renderer.__clear ();
+					}
+					
+					context3D.__present = false;
+					
+				}
+				
+			}
 			
-			#if (lime >= "7.0.0")
-			window.onRender.cancel ();
-			#else
-			renderer.onRender.cancel ();
-			#end
+			__renderer.__cleared = false;
 			
 		}
 		
@@ -1492,7 +1512,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	public function update (deltaTime:Int):Void {
+	@:noCompletion @:dox(hide) public function update (deltaTime:Int):Void {
 		
 		__deltaTime = deltaTime;
 		
@@ -1501,7 +1521,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	#if (lime >= "7.0.0")
 	@:noCompletion private function __addWindow (window:Window):Void {
 		
 		if (this.window != window) return;
@@ -1536,7 +1555,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 		onWindowCreate (window);
 		
 	}
-	#end
 	
 	
 	@:noCompletion private function __broadcastEvent (event:Event):Void {
@@ -1552,15 +1570,15 @@ class Stage extends DisplayObjectContainer implements IModule {
 				
 				if (dispatcher.stage == this || dispatcher.stage == null) {
 					
-					try {
+					#if !openfl_disable_handle_error try { #end
 						
 						dispatcher.__dispatch (event);
 						
-					} catch (e:Dynamic) {
+					#if !openfl_disable_handle_error } catch (e:Dynamic) {
 						
 						__handleError (e);
 						
-					}
+					} #end
 					
 				}
 				
@@ -1576,35 +1594,26 @@ class Stage extends DisplayObjectContainer implements IModule {
 		#if (js && html5)
 		var pixelRatio = 1;
 		
-		#if (lime >= "7.0.0")
 		if (window.scale > 1) {
 			
 			// TODO: Does this check work?
 			pixelRatio = untyped window.devicePixelRatio || 1;
 			
 		}
-		#else
-		if (window.config != null && Reflect.hasField (window.config, "allowHighDPI") && window.config.allowHighDPI) {
-			
-			pixelRatio = untyped window.devicePixelRatio || 1;
-			
-		}
-		#end
 		#end
 		
-		#if (lime >= "7.0.0")
+		var windowWidth = Std.int (window.width * window.scale);
+		var windowHeight = Std.int (window.height * window.scale);
+		
 		switch (window.context.type) {
 			
 			case OPENGL, OPENGLES, WEBGL:
 				
 				#if (!disable_cffi && (!html5 || !canvas))
-				__renderer = new OpenGLRenderer (window.context);
-				
-				if (stage3Ds[0].context3D == null) {
-					
-					stage3Ds[0].__createContext (this, __renderer);
-					
-				}
+				context3D = new Context3D (this);
+				context3D.configureBackBuffer (windowWidth, windowHeight, 0, true, true, true);
+				context3D.present ();
+				__renderer = new OpenGLRenderer (context3D);
 				#end
 			
 			case CANVAS:
@@ -1630,46 +1639,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 			default:
 			
 		}
-		#else
-		switch (window.renderer.context) {
-			
-			case OPENGL (gl):
-				
-				#if (!disable_cffi && (!html5 || !canvas))
-				__renderer = new OpenGLRenderer (gl);
-				
-				if (stage3Ds[0].context3D == null) {
-					
-					stage3Ds[0].__createContext (this, __renderer);
-					
-				}
-				#end
-			
-			case CANVAS (context):
-				
-				#if (js && html5)
-				__renderer = new CanvasRenderer (context);
-				cast (__renderer, CanvasRenderer).pixelRatio = pixelRatio;
-				#end
-			
-			case DOM (element):
-				
-				#if (js && html5)
-				__renderer = new DOMRenderer (element);
-				cast (__renderer, DOMRenderer).pixelRatio = pixelRatio;
-				#end
-			
-			case CAIRO (cairo):
-				
-				#if lime_cairo
-				__renderer = new CairoRenderer (cairo);
-				
-				#end
-			
-			default:
-			
-		}
-		#end
 		
 		if (__renderer != null) {
 			
@@ -1677,7 +1646,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			__renderer.__worldTransform = __displayMatrix;
 			__renderer.__stage = this;
 			
-			__renderer.__resize (Std.int (window.width * window.scale), Std.int (window.height * window.scale));
+			__renderer.__resize (windowWidth, windowHeight);
 			
 		}
 		
@@ -1686,16 +1655,16 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private override function __dispatchEvent (event:Event):Bool {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			return super.__dispatchEvent (event);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			return false;
 			
-		}
+		} #end
 		
 	}
 	
@@ -1714,7 +1683,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private function __dispatchStack (event:Event, stack:Array<DisplayObject>):Void {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			var target:DisplayObject;
 			var length = stack.length;
@@ -1775,11 +1744,11 @@ class Stage extends DisplayObjectContainer implements IModule {
 				
 			}
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			
-		}
+		} #end
 		
 		
 	}
@@ -1787,16 +1756,16 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private function __dispatchTarget (target:EventDispatcher, event:Event):Bool {
 		
-		try {
+		#if !openfl_disable_handle_error try { #end
 			
 			return target.__dispatchEvent (event);
 			
-		} catch (e:Dynamic) {
+		#if !openfl_disable_handle_error } catch (e:Dynamic) {
 			
 			__handleError (e);
 			return false;
 			
-		}
+		} #end
 		
 	}
 	
@@ -1965,6 +1934,121 @@ class Stage extends DisplayObjectContainer implements IModule {
 				
 			}
 			
+			else {
+				
+				if (type == KeyboardEvent.KEY_DOWN && keyCode == Keyboard.TAB) {
+					
+					var tabStack = new Array <InteractiveObject> ();
+					
+					__tabTest (tabStack);
+					
+					var nextIndex = -1;
+					var nextObject:InteractiveObject = null;
+					var nextOffset = modifier.shiftKey ? -1 : 1;
+					
+					if (tabStack.length > 1) {
+						
+						ArraySort.sort (tabStack, function (a, b) { return a.tabIndex - b.tabIndex; } );
+						
+						if (tabStack[tabStack.length - 1].tabIndex == -1) {
+							
+							// all tabIndices are equal to -1
+							if (focus != null) nextIndex = 0;
+							else nextIndex = __currentTabOrderIndex;
+							
+						} else {
+							
+							var i = 0;
+							while (i < tabStack.length) {
+								
+								if (tabStack[i].tabIndex > -1) {
+									
+									if (i > 0) tabStack.splice (0, i);
+									break;
+									
+								}
+								
+								i++;
+								
+							}
+							
+							if (focus != null) {
+								
+								var index = tabStack.indexOf (focus);
+								
+								if (index < 0) nextIndex = 0;
+								else nextIndex = index + nextOffset;
+								
+							} else {
+								
+								nextIndex = __currentTabOrderIndex;
+								
+							}
+							
+						}
+						
+					} else if (tabStack.length == 1) {
+						
+						nextObject = tabStack[0];
+						
+						if (focus == nextObject) nextObject = null;
+						
+					}
+					
+					if (tabStack.length == 1 || tabStack.length == 0 && focus != null) {
+						
+						nextIndex = 0;
+						
+					} else if (tabStack.length > 1) {
+						
+						if (nextIndex < 0) nextIndex += tabStack.length;
+						
+						nextIndex %= tabStack.length;
+						nextObject = tabStack[nextIndex];
+						
+						if (nextObject == focus) {
+							
+							nextIndex += nextOffset;
+							
+							if (nextIndex < 0) nextIndex += tabStack.length;
+							
+							nextIndex %= tabStack.length;
+							nextObject = tabStack[nextIndex];
+							
+						}
+						
+					}
+					
+					var focusEvent = null;
+					
+					if (focus != null) {
+						
+						focusEvent = new FocusEvent (FocusEvent.KEY_FOCUS_CHANGE, true, true, nextObject, modifier.shiftKey, 0);
+						
+						stack = [];
+						
+						focus.__getInteractive (stack);
+						stack.reverse();
+						
+						__dispatchStack (focusEvent, stack);
+					
+					}
+					
+					if (focusEvent == null || !focusEvent.isDefaultPrevented()) {
+						
+						__currentTabOrderIndex = nextIndex;
+						if (nextObject != null) focus = nextObject;
+						
+						// TODO: handle border around focus
+						
+					}
+					
+				}
+				
+				// TODO: handle arrow keys changing the focus
+				
+			}
+			
 		}
 		
 	}
@@ -2017,7 +2101,25 @@ class Stage extends DisplayObjectContainer implements IModule {
 				
 				if (target.__allowMouseFocus ()) {
 					
-					focus = target;
+					if (focus != null) {
+						
+						var focusEvent = new FocusEvent(FocusEvent.MOUSE_FOCUS_CHANGE, true, true, target, false, 0);
+						
+						__dispatchStack (focusEvent, stack);
+						
+						if (!focusEvent.isDefaultPrevented()) {
+							
+							focus = target;
+							
+						}
+						
+					}
+					
+					else {
+						
+						focus = target;
+						
+					}
 					
 				} else {
 					
@@ -2042,13 +2144,13 @@ class Stage extends DisplayObjectContainer implements IModule {
 					
 					MouseEvent.__buttonDown = false;
 					
-					if (__mouseX < 0 || __mouseY < 0 || __mouseX > stageWidth || __mouseY > stageHeight) {
-						
-						__dispatchEvent (MouseEvent.__create (MouseEvent.RELEASE_OUTSIDE, 1, __mouseX, __mouseY, new Point (__mouseX, __mouseY), this));
-						
-					} else if (__mouseDownLeft == target) {
+					if (__mouseDownLeft == target) {
 						
 						clickType = MouseEvent.CLICK;
+						
+					} else {
+						
+						__mouseDownLeft.dispatchEvent (MouseEvent.__create (MouseEvent.RELEASE_OUTSIDE, 1, __mouseX, __mouseY, new Point (__mouseX, __mouseY), this));
 						
 					}
 					
@@ -2106,7 +2208,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			
 		}
 		
-		if (Mouse.__cursor == MouseCursor.AUTO) {
+		if (Mouse.__cursor == MouseCursor.AUTO && !Mouse.__hidden) {
 			
 			var cursor = null;
 			
@@ -2122,34 +2224,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 					
 					if (cursor != null) {
 						
-						#if (lime >= "7.0.0")
 						window.cursor = cursor;
-						#elseif (commonjs && !nodejs)
-						if (cursor != __cursor && @:privateAccess !lime._backend.html5.HTML5Mouse.__hidden) {
-							
-							@:privateAccess window.backend.element.style.cursor = switch (cursor) {
-								
-								case ARROW: "default";
-								case CROSSHAIR: "crosshair";
-								case MOVE: "move";
-								case POINTER: "pointer";
-								case RESIZE_NESW: "nesw-resize";
-								case RESIZE_NS: "ns-resize";
-								case RESIZE_NWSE: "nwse-resize";
-								case RESIZE_WE: "ew-resize";
-								case TEXT: "text";
-								case WAIT: "wait";
-								case WAIT_ARROW: "wait";
-								default: "auto";
-								
-							}
-							
-							__cursor = cursor;
-							
-						}
-						#else
-						LimeMouse.cursor = cursor;
-						#end
 						break;
 						
 					}
@@ -2160,18 +2235,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			
 			if (cursor == null) {
 				
-				#if (lime >= "7.0.0")
 				window.cursor = ARROW;
-				#elseif (commonjs && !nodejs)
-				if (__cursor != null && @:privateAccess !lime._backend.html5.HTML5Mouse.__hidden) {
-					
-					@:privateAccess window.backend.element.style.cursor = "default";
-					__cursor = null;
-					
-				}
-				#else
-				LimeMouse.cursor = ARROW;
-				#end
 				
 			}
 			
@@ -2281,7 +2345,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	@:noCompletion private function __onMouseWheel (deltaX:Float, deltaY:Float #if (lime >= "7.0.0"), deltaMode:MouseWheelMode #end):Void {
+	@:noCompletion private function __onMouseWheel (deltaX:Float, deltaY:Float, deltaMode:MouseWheelMode):Void {
 		
 		var x = __mouseX;
 		var y = __mouseY;
@@ -2385,6 +2449,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 		var touchEvent = TouchEvent.__create (type, null, touchX, touchY, target.__globalToLocal (targetPoint, localPoint), cast target);
 		touchEvent.touchPointID = touchId;
 		touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
+		touchEvent.pressure = touch.pressure;
 		
 		__dispatchStack (touchEvent, stack);
 		
@@ -2393,6 +2458,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			touchEvent = TouchEvent.__create (touchType, null, touchX, touchY, target.__globalToLocal (targetPoint, localPoint), cast target);
 			touchEvent.touchPointID = touchId;
 			touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
+			touchEvent.pressure = touch.pressure;
 			
 			__dispatchStack (touchEvent, stack);
 			
@@ -2405,6 +2471,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			touchEvent = TouchEvent.__create (TouchEvent.TOUCH_OUT, null, touchX, touchY, touchOverTarget.__globalToLocal (targetPoint, localPoint), cast touchOverTarget);
 			touchEvent.touchPointID = touchId;
 			touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
+			touchEvent.pressure = touch.pressure;
 			
 			__dispatchTarget (touchOverTarget, touchEvent);
 			
@@ -2422,6 +2489,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 				touchEvent.touchPointID = touchId;
 				touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
 				touchEvent.bubbles = false;
+				touchEvent.pressure = touch.pressure;
 				
 				__dispatchTarget (target, touchEvent);
 				
@@ -2439,6 +2507,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 					touchEvent.touchPointID = touchId;
 					touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
 					touchEvent.bubbles = false;
+					touchEvent.pressure = touch.pressure;
 					
 					__dispatchTarget (target, touchEvent);
 					
@@ -2462,6 +2531,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 				touchEvent.touchPointID = touchId;
 				touchEvent.isPrimaryTouchPoint = isPrimaryTouchPoint;
 				touchEvent.bubbles = true;
+				touchEvent.pressure = touch.pressure;
 				
 				__dispatchTarget (target, touchEvent);
 				
@@ -2485,7 +2555,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	#if (lime >= "7.0.0")
 	@:noCompletion private function __registerLimeModule (application:Application):Void {
 		
 		application.onCreateWindow.add (__addWindow);
@@ -2502,9 +2571,9 @@ class Stage extends DisplayObjectContainer implements IModule {
 		Touch.onStart.add (onTouchStart);
 		Touch.onMove.add (onTouchMove);
 		Touch.onEnd.add (onTouchEnd);
+		Touch.onCancel.add (onTouchCancel);
 		
 	}
-	#end
 	
 	
 	@:noCompletion private function __resize ():Void {
@@ -2522,31 +2591,56 @@ class Stage extends DisplayObjectContainer implements IModule {
 		
 		__displayMatrix.identity ();
 		
-		if (__logicalWidth == 0 && __logicalHeight == 0) {
+		if (fullScreenSourceRect != null && window.fullscreen) {
 			
-			stageWidth = windowWidth;
-			stageHeight = windowHeight;
+			stageWidth = Std.int (fullScreenSourceRect.width);
+			stageHeight = Std.int (fullScreenSourceRect.height);
+			
+			var displayScaleX = windowWidth / stageWidth;
+			var displayScaleY = windowHeight / stageHeight;
+			
+			__displayMatrix.translate (-fullScreenSourceRect.x, -fullScreenSourceRect.y);
+			__displayMatrix.scale (displayScaleX, displayScaleY);
+			
+			__displayRect.setTo (fullScreenSourceRect.left, fullScreenSourceRect.right, fullScreenSourceRect.top, fullScreenSourceRect.bottom);
 			
 		} else {
 			
-			stageWidth = __logicalWidth;
-			stageHeight = __logicalHeight;
+			if (__logicalWidth == 0 && __logicalHeight == 0) {
+				
+				stageWidth = windowWidth;
+				stageHeight = windowHeight;
+				
+			} else {
+				
+				stageWidth = __logicalWidth;
+				stageHeight = __logicalHeight;
+				
+				var scaleX = windowWidth / stageWidth;
+				var scaleY = windowHeight / stageHeight;
+				var targetScale = Math.min (scaleX, scaleY);
+				
+				var offsetX = Math.round ((windowWidth - (stageWidth * targetScale)) / 2);
+				var offsetY = Math.round ((windowHeight - (stageHeight * targetScale)) / 2);
+				
+				__displayMatrix.scale (targetScale, targetScale);
+				__displayMatrix.translate (offsetX, offsetY);
+				
+			}
 			
-			var scaleX = windowWidth / stageWidth;
-			var scaleY = windowHeight / stageHeight;
-			var targetScale = Math.min (scaleX, scaleY);
+			__displayRect.setTo (0, 0, stageWidth, stageHeight);
 			
-			var offsetX = Math.round ((windowWidth - (stageWidth * targetScale)) / 2);
-			var offsetY = Math.round ((windowHeight - (stageHeight * targetScale)) / 2);
+		}
+		
+		if (context3D != null) {
 			
-			__displayMatrix.scale (targetScale, targetScale);
-			__displayMatrix.translate (offsetX, offsetY);
+			context3D.configureBackBuffer (windowWidth, windowHeight, 0, true, true, true);
 			
 		}
 		
 		for (stage3D in stage3Ds) {
 			
-			stage3D.__resize (stageWidth, stageHeight);
+			stage3D.__resize (windowWidth, windowHeight);
 			
 		}
 		
@@ -2580,7 +2674,23 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private function __startDrag (sprite:Sprite, lockCenter:Bool, bounds:Rectangle):Void {
 		
-		__dragBounds = (bounds == null) ? null : bounds.clone ();
+		if (bounds == null) {
+			
+			__dragBounds = null;
+			
+		} else {
+			
+			__dragBounds = new Rectangle ();
+			
+			var right = bounds.right;
+			var bottom = bounds.bottom;
+			__dragBounds.x = right < bounds.x ? right : bounds.x;
+			__dragBounds.y = bottom < bounds.y ? bottom : bounds.y;
+			__dragBounds.width = Math.abs (bounds.width);
+			__dragBounds.height = Math.abs (bounds.height);
+			
+		}
+		
 		__dragObject = sprite;
 		
 		if (__dragObject != null) {
@@ -2621,7 +2731,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	#if (lime >= "7.0.0")
 	@:noCompletion private function __unregisterLimeModule (application:Application):Void {
 		
 		application.onCreateWindow.remove (__addWindow);
@@ -2632,9 +2741,9 @@ class Stage extends DisplayObjectContainer implements IModule {
 		Touch.onStart.remove (onTouchStart);
 		Touch.onMove.remove (onTouchMove);
 		Touch.onEnd.remove (onTouchEnd);
+		Touch.onCancel.remove (onTouchCancel);
 		
 	}
-	#end
 	
 	
 	@:noCompletion private override function __update (transformOnly:Bool, updateChildren:Bool):Void {
@@ -2695,95 +2804,6 @@ class Stage extends DisplayObjectContainer implements IModule {
 	}
 	
 	
-	#if (lime < "7.0.0")
-	@:noCompletion public function addRenderer (renderer:Renderer):Void {
-		
-		if (this.window == null || this.window.renderer != renderer) return;
-		
-		renderer.onRender.add (render.bind (renderer));
-		renderer.onContextLost.add (onRenderContextLost.bind (renderer));
-		renderer.onContextRestored.add (onRenderContextRestored.bind (renderer));
-		
-	}
-	
-	
-	@:noCompletion public function addWindow (window:Window):Void {
-		
-		if (this.window != window) return;
-		
-		window.onActivate.add (onWindowActivate.bind (window));
-		window.onClose.add (onWindowClose.bind (window), false, -9000);
-		window.onCreate.add (onWindowCreate.bind (window));
-		window.onDeactivate.add (onWindowDeactivate.bind (window));
-		window.onDropFile.add (onWindowDropFile.bind (window));
-		window.onEnter.add (onWindowEnter.bind (window));
-		window.onExpose.add (onWindowExpose.bind (window));
-		window.onFocusIn.add (onWindowFocusIn.bind (window));
-		window.onFocusOut.add (onWindowFocusOut.bind (window));
-		window.onFullscreen.add (onWindowFullscreen.bind (window));
-		window.onKeyDown.add (onKeyDown.bind (window));
-		window.onKeyUp.add (onKeyUp.bind (window));
-		window.onLeave.add (onWindowLeave.bind (window));
-		window.onMinimize.add (onWindowMinimize.bind (window));
-		window.onMouseDown.add (onMouseDown.bind (window));
-		window.onMouseMove.add (onMouseMove.bind (window));
-		window.onMouseMoveRelative.add (onMouseMoveRelative.bind (window));
-		window.onMouseUp.add (onMouseUp.bind (window));
-		window.onMouseWheel.add (onMouseWheel.bind (window));
-		window.onMove.add (onWindowMove.bind (window));
-		window.onResize.add (onWindowResize.bind (window));
-		window.onRestore.add (onWindowRestore.bind (window));
-		window.onTextEdit.add (onTextEdit.bind (window));
-		window.onTextInput.add (onTextInput.bind (window));
-		
-		if (window.id > -1) {
-			
-			onWindowCreate (window);
-			
-		}
-		
-	}
-	
-	
-	@:noCompletion public function registerModule (application:Application):Void {
-		
-		application.onExit.add (onModuleExit, false, 0);
-		application.onUpdate.add (update);
-		
-		for (gamepad in Gamepad.devices) {
-			
-			__onGamepadConnect (gamepad);
-			
-		}
-		
-		Gamepad.onConnect.add (__onGamepadConnect);
-		Touch.onStart.add (onTouchStart);
-		Touch.onMove.add (onTouchMove);
-		Touch.onEnd.add (onTouchEnd);
-		
-	}
-	
-	
-	@:noCompletion public function removeRenderer (renderer:Renderer):Void { }
-	@:noCompletion public function removeWindow (window:Window):Void { }
-	@:noCompletion public function setPreloader (preloader:Preloader):Void { }
-	
-	
-	
-	@:noCompletion public function unregisterModule (application:Application):Void {
-		
-		application.onExit.remove (onModuleExit);
-		application.onUpdate.remove (update);
-		
-		Gamepad.onConnect.remove (__onGamepadConnect);
-		Touch.onStart.remove (onTouchStart);
-		Touch.onMove.remove (onTouchMove);
-		Touch.onEnd.remove (onTouchEnd);
-		
-	}
-	#end
-	
-	
 	
 	
 	// Get & Set Methods
@@ -2822,7 +2842,7 @@ class Stage extends DisplayObjectContainer implements IModule {
 			__colorSplit[2] = b / 0xFF;
 			__colorString = "#" + StringTools.hex (value & 0xFFFFFF, 6);
 			__renderDirty = true;
-			__color = value;
+			__color = (0xFF << 24) | (value & 0xFFFFFF);
 			
 		}
 		
@@ -2922,19 +2942,11 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private function get_frameRate ():Float {
 		
-		#if (lime >= "7.0.0")
 		if (window != null) {
 			
 			return window.frameRate;
 			
 		}
-		#else
-		if (application != null) {
-			
-			return application.frameRate;
-			
-		}
-		#end
 		
 		return 0;
 		
@@ -2943,19 +2955,11 @@ class Stage extends DisplayObjectContainer implements IModule {
 	
 	@:noCompletion private function set_frameRate (value:Float):Float {
 		
-		#if (lime >= "7.0.0")
 		if (window != null) {
 			
 			return window.frameRate = value;
 			
 		}
-		#else
-		if (application != null) {
-			
-			return application.frameRate = value;
-			
-		}
-		#end
 		
 		return value;
 		
@@ -2965,6 +2969,36 @@ class Stage extends DisplayObjectContainer implements IModule {
 	@:noCompletion private function get_fullScreenHeight ():UInt {
 		
 		return Math.ceil (window.display.currentMode.height * window.scale);
+		
+	}
+	
+	
+	@:noCompletion private function get_fullScreenSourceRect ():Rectangle {
+		
+		return __fullScreenSourceRect == null ? null : __fullScreenSourceRect.clone ();
+		
+	}
+	
+	
+	@:noCompletion private function set_fullScreenSourceRect (value:Rectangle):Rectangle {
+		
+		if (value == null) {
+			
+			if (__fullScreenSourceRect != null) {
+				
+				__fullScreenSourceRect = null;
+				__resize ();
+				
+			}
+			
+		} else if (!value.equals (__fullScreenSourceRect)) {
+			
+			__fullScreenSourceRect = value.clone ();
+			__resize ();
+			
+		}
+		
+		return value;
 		
 	}
 	
@@ -3052,6 +3086,34 @@ class Stage extends DisplayObjectContainer implements IModule {
 	@:noCompletion private override function set_scaleY (value:Float):Float {
 		
 		return 0;
+		
+	}
+	
+	
+	@:noCompletion private override function get_tabEnabled ():Bool {
+		
+		return false;
+		
+	}
+	
+	
+	@:noCompletion private override function set_tabEnabled (value:Bool):Bool {
+		
+		throw new IllegalOperationError("Error: The Stage class does not implement this property or method.");
+		
+	}
+	
+	
+	@:noCompletion private override function get_tabIndex ():Int {
+		
+		return -1;
+		
+	}
+	
+	
+	@:noCompletion private override function set_tabIndex (value:Int):Int {
+		
+		throw new IllegalOperationError("Error: The Stage class does not implement this property or method.");
 		
 	}
 	
