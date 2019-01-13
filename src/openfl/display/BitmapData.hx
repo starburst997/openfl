@@ -2,9 +2,33 @@ package openfl.display; #if !flash
 
 
 import haxe.macro.Context;
+import openfl._internal.formats.swf.SWFLite;
+import openfl._internal.symbols.BitmapSymbol;
+import openfl._internal.utils.PerlinNoise;
+import openfl.display3D.textures.TextureBase;
+import openfl.display3D.textures.RectangleTexture;
+import openfl.display3D.Context3DClearMask;
+import openfl.display3D.Context3D;
+import openfl.display3D.IndexBuffer3D;
+import openfl.display3D.VertexBuffer3D;
+import openfl.errors.Error;
+import openfl.errors.IOError;
+import openfl.errors.TypeError;
+import openfl.filters.BitmapFilter;
+import openfl.geom.ColorTransform;
+import openfl.geom.Matrix;
+import openfl.geom.Point;
+import openfl.geom.Rectangle;
+import openfl.utils.ByteArray;
+import openfl.utils.Endian;
+import openfl.utils.Future;
+import openfl.utils.Object;
+import openfl.Lib;
+import openfl.Vector;
+
+#if lime
 import lime._internal.graphics.ImageCanvasUtil; // TODO
 import lime.app.Application;
-import lime.app.Future;
 import lime.app.Promise;
 import lime.graphics.cairo.CairoExtend;
 import lime.graphics.cairo.CairoFilter;
@@ -28,27 +52,7 @@ import lime.math.Vector2;
 import lime.utils.Float32Array;
 import lime.utils.UInt8Array;
 import lime.utils.UInt16Array;
-import openfl._internal.formats.swf.SWFLite;
-import openfl._internal.symbols.BitmapSymbol;
-import openfl._internal.utils.PerlinNoise;
-import openfl.display3D.textures.TextureBase;
-import openfl.display3D.textures.RectangleTexture;
-import openfl.display3D.Context3DClearMask;
-import openfl.display3D.Context3D;
-import openfl.display3D.IndexBuffer3D;
-import openfl.display3D.VertexBuffer3D;
-import openfl.errors.Error;
-import openfl.errors.IOError;
-import openfl.errors.TypeError;
-import openfl.filters.BitmapFilter;
-import openfl.geom.ColorTransform;
-import openfl.geom.Matrix;
-import openfl.geom.Point;
-import openfl.geom.Rectangle;
-import openfl.utils.ByteArray;
-import openfl.utils.Object;
-import openfl.Lib;
-import openfl.Vector;
+#end
 
 #if (js && html5)
 import js.html.CanvasElement;
@@ -156,11 +160,14 @@ class BitmapData implements IBitmapDrawable {
 	
 	@:noCompletion private static inline var __vertexBufferStride = 14;
 	@:noCompletion private static var __supportsBGRA:Null<Bool> = null;
-	@:noCompletion private static var __tempVector:Vector2 = new Vector2 ();
 	@:noCompletion private static var __textureFormat:Int;
 	@:noCompletion private static var __textureInternalFormat:Int;
 	
     public static var premultipliedDefault = true;
+
+	#if lime
+	@:noCompletion private static var __tempVector:Vector2 = new Vector2 ();
+	#end
 
 	/**
 	 * The height of the bitmap image in pixels.
@@ -172,7 +179,7 @@ class BitmapData implements IBitmapDrawable {
 	 * 
 	 * In Flash Player, this property is always `null`.
 	 */
-	public var image (default, null):Image;
+	public var image (default, null):#if lime Image #else Dynamic #end;
 	
 	// #if !flash_doc_gen
 	/**
@@ -215,30 +222,30 @@ class BitmapData implements IBitmapDrawable {
 	@:noCompletion private var __blendMode:BlendMode;
 	// @:noCompletion private var __vertexBufferColorTransform:ColorTransform;
 	// @:noCompletion private var __vertexBufferAlpha:Float;
-	@:noCompletion private var __framebuffer:GLFramebuffer;
-	@:noCompletion private var __framebufferContext:RenderContext;
+	@:noCompletion private var __framebuffer:#if lime GLFramebuffer #else Dynamic #end;
+	@:noCompletion private var __framebufferContext:#if lime RenderContext #else Dynamic #end;
 	@:noCompletion private var __indexBuffer:IndexBuffer3D;
-	@:noCompletion private var __indexBufferContext:RenderContext;
-	@:noCompletion private var __indexBufferData:UInt16Array;
+	@:noCompletion private var __indexBufferContext:#if lime RenderContext #else Dynamic #end;
+	@:noCompletion private var __indexBufferData:#if lime UInt16Array #else Dynamic #end;
 	@:noCompletion private var __isMask:Bool;
 	@:noCompletion private var __isValid:Bool;
 	@:noCompletion private var __mask:DisplayObject;
 	@:noCompletion private var __renderable:Bool;
 	@:noCompletion private var __renderTransform:Matrix;
 	@:noCompletion private var __scrollRect:Rectangle;
-	@:noCompletion private var __stencilBuffer:GLRenderbuffer;
-	@:noCompletion private var __surface:CairoSurface;
+	@:noCompletion private var __stencilBuffer:#if lime GLRenderbuffer #else Dynamic #end;
+	@:noCompletion private var __surface:#if lime CairoSurface #else Dynamic #end;
 	@:noCompletion private var __symbol:BitmapSymbol;
 	@:noCompletion private var __texture:RectangleTexture;
-	@:noCompletion private var __textureContext:RenderContext;
+	@:noCompletion private var __textureContext:#if lime RenderContext #else Dynamic #end;
 	@:noCompletion private var __textureHeight:Int;
 	@:noCompletion private var __textureVersion:Int;
 	@:noCompletion private var __textureWidth:Int;
 	@:noCompletion private var __transform:Matrix;
 	@:noCompletion private var __uvRect:Rectangle;
 	@:noCompletion private var __vertexBuffer:VertexBuffer3D;
-	@:noCompletion private var __vertexBufferContext:RenderContext;
-	@:noCompletion private var __vertexBufferData:Float32Array;
+	@:noCompletion private var __vertexBufferContext:#if lime RenderContext #else Dynamic #end;
+	@:noCompletion private var __vertexBufferData:#if lime Float32Array #else Dynamic #end;
 	@:noCompletion private var __worldAlpha:Float;
 	@:noCompletion private var __worldColorTransform:ColorTransform;
 	@:noCompletion private var __worldTransform:Matrix;
@@ -296,6 +303,7 @@ class BitmapData implements IBitmapDrawable {
 			
 			fillColor = (fillColor << 8) | ((fillColor >> 24) & 0xFF);
 			
+			#if lime
 			#if sys
 			var buffer = new ImageBuffer (new UInt8Array (width * height * 4), width, height);
 			buffer.format = BGRA32;
@@ -327,6 +335,7 @@ class BitmapData implements IBitmapDrawable {
 			#end
 			
 			image.transparent = transparent;
+			#end
 			
 			__isValid = true;
 			readable = true;
@@ -418,6 +427,7 @@ class BitmapData implements IBitmapDrawable {
 	 */
 	public function clone ():BitmapData {
 		
+		#if lime
 		var bitmapData;
 		
 		if (!__isValid) {
@@ -450,6 +460,9 @@ class BitmapData implements IBitmapDrawable {
 		bitmapData.__renderTransform.copyFrom (__renderTransform);
 		
 		return bitmapData;
+		#else
+		return null;
+		#end
 		
 	}
 	
@@ -465,7 +478,9 @@ class BitmapData implements IBitmapDrawable {
 		
 		if (!readable) return;
 		
+		#if lime
 		image.colorTransform (rect.__toLimeRectangle (), colorTransform.__toLimeColorMatrix ());
+		#end
 		
 	}
 	
@@ -482,6 +497,7 @@ class BitmapData implements IBitmapDrawable {
 	 */
 	public function compare (otherBitmapData:BitmapData):Dynamic {
 		
+		#if lime
 		if (otherBitmapData == this) {
 			
 			return 0;
@@ -602,6 +618,9 @@ class BitmapData implements IBitmapDrawable {
 		}
 		
 		return bitmapData;
+		#else
+		return 0;
+		#end
 		
 	}
 	
@@ -653,6 +672,7 @@ class BitmapData implements IBitmapDrawable {
 		
 		if (!readable) return;
 		
+		#if lime
 		var sourceChannel = switch (sourceChannel) {
 			
 			case 1: ImageChannel.RED;
@@ -674,6 +694,7 @@ class BitmapData implements IBitmapDrawable {
 		}
 		
 		image.copyChannel (sourceBitmapData.image, sourceRect.__toLimeRectangle (), destPoint.__toLimeVector2 (), sourceChannel, destChannel);
+		#end
 		
 	}
 	
@@ -721,6 +742,7 @@ class BitmapData implements IBitmapDrawable {
 		
 		if (!readable || sourceBitmapData == null) return;
 		
+		#if lime
 		if (alphaPoint != null) {
 			
 			__tempVector.x = alphaPoint.x;
@@ -729,6 +751,7 @@ class BitmapData implements IBitmapDrawable {
 		}
 		
 		image.copyPixels (sourceBitmapData.image, sourceRect.__toLimeRectangle (), destPoint.__toLimeVector2 (), alphaBitmapData != null ? alphaBitmapData.image : null, alphaPoint != null ? __tempVector : null, mergeAlpha);
+		#end
 		
 	}
 	
@@ -1044,6 +1067,7 @@ class BitmapData implements IBitmapDrawable {
 	
 	public function encode (rect:Rectangle, compressor:Object, byteArray:ByteArray = null):ByteArray {
 		
+		#if lime
 		if (!readable || rect == null) return byteArray = null;
 		if (byteArray == null) byteArray = new ByteArray();
 		
@@ -1075,6 +1099,7 @@ class BitmapData implements IBitmapDrawable {
 			return byteArray;
 			
 		}
+		#end
 		
 		return byteArray = null;
 		
@@ -1110,8 +1135,10 @@ class BitmapData implements IBitmapDrawable {
 	 */
 	public function floodFill (x:Int, y:Int, color:Int):Void {
 		
+		#if lime
 		if (!readable) return;
 		image.floodFill (x, y, color, ARGB32);
+		#end
 		
 	}
 	
@@ -1175,6 +1202,7 @@ class BitmapData implements IBitmapDrawable {
 	#end
 	
 	
+	#if lime
 	public static function fromImage (image:Image, transparent:Bool = true):BitmapData {
 		
 		if (image == null || image.buffer == null) return null;
@@ -1185,6 +1213,7 @@ class BitmapData implements IBitmapDrawable {
 		return bitmapData.image != null ? bitmapData : null;
 		
 	}
+	#end
 	
 	
 	public static function fromTexture (texture:RectangleTexture):BitmapData {
@@ -1243,6 +1272,7 @@ class BitmapData implements IBitmapDrawable {
 			
 			// TODO: Use shared buffer on context
 			
+			#if lime
 			__indexBufferData = new UInt16Array (6);
 			__indexBufferData[0] = 0;
 			__indexBufferData[1] = 1;
@@ -1254,6 +1284,7 @@ class BitmapData implements IBitmapDrawable {
 			__indexBufferContext = context.__context;
 			__indexBuffer = context.createIndexBuffer (6);
 			__indexBuffer.uploadFromTypedArray (__indexBufferData);
+			#end
 			
 		}
 		
@@ -1315,6 +1346,7 @@ class BitmapData implements IBitmapDrawable {
 			//[ colorTransform.redMultiplier, 0, 0, 0, 0, colorTransform.greenMultiplier, 0, 0, 0, 0, colorTransform.blueMultiplier, 0, 0, 0, 0, colorTransform.alphaMultiplier ];
 			//[ colorTransform.redOffset / 255, colorTransform.greenOffset / 255, colorTransform.blueOffset / 255, colorTransform.alphaOffset / 255 ]
 			
+			#if lime
 			__vertexBufferData = new Float32Array (__vertexBufferStride * 4);
 			
 			__vertexBufferData[0] = width;
@@ -1351,6 +1383,7 @@ class BitmapData implements IBitmapDrawable {
 			__vertexBuffer = context.createVertexBuffer (3, __vertexBufferStride);
 			
 			__vertexBuffer.uploadFromTypedArray (__vertexBufferData);
+			#end
 			
 		} else {
 			
@@ -1465,6 +1498,7 @@ class BitmapData implements IBitmapDrawable {
 	 */
 	public function getColorBoundsRect (mask:Int, color:Int, findColor:Bool = true):Rectangle {
 		
+		#if lime
 		if (!readable) return new Rectangle (0, 0, width, height);
 		
 		if (!transparent || ((mask >> 24) & 0xFF) > 0) {
@@ -1476,6 +1510,9 @@ class BitmapData implements IBitmapDrawable {
 		
 		var rect = image.getColorBoundsRect (mask, color, findColor, ARGB32);
 		return new Rectangle (rect.x, rect.y, rect.width, rect.height);
+		#else
+		return new Rectangle (0, 0, width, height);
+		#end
 		
 	}
 	
@@ -1506,7 +1543,11 @@ class BitmapData implements IBitmapDrawable {
 	public function getPixel (x:Int, y:Int):Int {
 		
 		if (!readable) return 0;
+		#if lime
 		return image.getPixel (x, y, ARGB32);
+		#else
+		return 0;
+		#end
 		
 	}
 	
@@ -1536,7 +1577,11 @@ class BitmapData implements IBitmapDrawable {
 	public function getPixel32 (x:Int, y:Int):Int {
 		
 		if (!readable) return 0;
+		#if lime
 		return image.getPixel32 (x, y, ARGB32);
+		#else
+		return 0;
+		#end
 		
 	}
 	
@@ -1552,18 +1597,23 @@ class BitmapData implements IBitmapDrawable {
 	 */
 	public function getPixels (rect:Rectangle):ByteArray {
 		
+		#if lime
 		if (!readable) return null;
 		if (rect == null) rect = this.rect;
 		var byteArray = ByteArray.fromBytes (image.getPixels (rect.__toLimeRectangle (), ARGB32));
 		// TODO: System endian order
-		byteArray.endian = BIG_ENDIAN;
+		byteArray.endian = Endian.BIG_ENDIAN;
 		return byteArray;
+		#else
+		return null;
+		#end
 		
 	}
 	
 	
-	@:dox(hide) public function getSurface ():CairoImageSurface {
+	@:dox(hide) public function getSurface ():#if lime CairoImageSurface #else Dynamic #end {
 		
+		#if lime
 		if (!readable) return null;
 		
 		if (__surface == null) {
@@ -1573,6 +1623,9 @@ class BitmapData implements IBitmapDrawable {
 		}
 		
 		return __surface;
+		#else
+		return null;
+		#end
 		
 	}
 	
@@ -1595,6 +1648,7 @@ class BitmapData implements IBitmapDrawable {
 			
 		}
 		
+		#if lime
 		#if (js && html5)
 		ImageCanvasUtil.sync (image, false);
 		#end
@@ -1651,6 +1705,7 @@ class BitmapData implements IBitmapDrawable {
 			image = null;
 			
 		}
+		#end
 		
 		return __texture;
 		
@@ -1842,17 +1897,22 @@ class BitmapData implements IBitmapDrawable {
 	
 	public static function loadFromBase64 (base64:String, type:String):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromBase64 (base64, type).then (function (image) {
 			
 			return Future.withValue (BitmapData.fromImage (image));
 			
 		});
+		#else
+		return cast Future.withValue (null);
+		#end
 		
 	}
 	
 	
 	public static function loadFromBytes (bytes:ByteArray, rawAlpha:ByteArray = null):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromBytes (bytes).then (function (image) {
 			
 			var bitmapData = BitmapData.fromImage (image);
@@ -1866,17 +1926,24 @@ class BitmapData implements IBitmapDrawable {
 			return Future.withValue (bitmapData);
 			
 		});
+		#else
+		return cast Future.withValue (null);
+		#end
 		
 	}
 	
 	
 	public static function loadFromFile (path:String):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromFile (path).then (function (image) {
 			
 			return Future.withValue (BitmapData.fromImage (image));
 			
 		});
+		#else
+		return cast Future.withValue (null);
+		#end
 		
 	}
 	
@@ -1898,8 +1965,10 @@ class BitmapData implements IBitmapDrawable {
 	
 	public function merge (sourceBitmapData:BitmapData, sourceRect:Rectangle, destPoint:Point, redMultiplier:UInt, greenMultiplier:UInt, blueMultiplier:UInt, alphaMultiplier:UInt):Void {
 		
+		#if lime
 		if (!readable || sourceBitmapData == null || !sourceBitmapData.readable || sourceRect == null || destPoint == null) return;
 		image.merge (sourceBitmapData.image, sourceRect.__toLimeRectangle (), destPoint.__toLimeVector2 (), redMultiplier, greenMultiplier, blueMultiplier, alphaMultiplier);
+		#end
 		
 	}
 	
@@ -2137,7 +2206,9 @@ class BitmapData implements IBitmapDrawable {
 	public function setPixel (x:Int, y:Int, color:Int):Void {
 		
 		if (!readable) return;
+		#if lime
 		image.setPixel (x, y, color, ARGB32);
+		#end
 		
 	}
 	
@@ -2176,7 +2247,9 @@ class BitmapData implements IBitmapDrawable {
 	public function setPixel32 (x:Int, y:Int, color:Int):Void {
 		
 		if (!readable) return;
+		#if lime
 		image.setPixel32 (x, y, color, ARGB32);
+		#end
 		
 	}
 	
@@ -2207,7 +2280,9 @@ class BitmapData implements IBitmapDrawable {
 		var length = (rect.width * rect.height * 4);
 		if (byteArray.bytesAvailable < length) throw new Error ("End of file was encountered.", 2030);
 		
+		#if lime
 		image.setPixels (rect.__toLimeRectangle (), byteArray, ARGB32, byteArray.endian);
+		#end
 		
 	}
 	
@@ -2290,7 +2365,11 @@ class BitmapData implements IBitmapDrawable {
 		
 		if (sourceBitmapData == null || sourceRect == null || destPoint == null || sourceRect.x > sourceBitmapData.width || sourceRect.y > sourceBitmapData.height || destPoint.x > width || destPoint.y > height) return 0;
 		
+		#if lime
 		return image.threshold (sourceBitmapData.image, sourceRect.__toLimeRectangle (), destPoint.__toLimeVector2 (), operation, threshold, color, mask, copySource, ARGB32);
+		#else
+		return 0;
+		#end
 		
 	}
 	
@@ -2410,6 +2489,7 @@ class BitmapData implements IBitmapDrawable {
 	
 	@:noCompletion private function __fillRect (rect:Rectangle, color:Int, allowFramebuffer:Bool):Void {
 		
+		#if lime
 		if (rect == null) return;
 		
 		if (transparent && (color & 0xFF000000) == 0) {
@@ -2461,20 +2541,24 @@ class BitmapData implements IBitmapDrawable {
 			image.fillRect (rect.__toLimeRectangle (), color, ARGB32);
 			
 		}
+		#end
 		
 	}
 	
 	
 	@:noCompletion private inline function __fromBase64 (base64:String, type:String):Void {
 		
+		#if lime
 		var image = Image.fromBase64 (base64, type);
 		__fromImage (image);
+		#end
 		
 	}
 	
 	
 	@:noCompletion private inline function __fromBytes (bytes:ByteArray, rawAlpha:ByteArray = null):Void {
 		
+		#if lime
 		var image = Image.fromBytes (bytes);
 		__fromImage (image);
 		
@@ -2483,20 +2567,24 @@ class BitmapData implements IBitmapDrawable {
 			__applyAlpha (rawAlpha);
 			
 		}
+		#end
 		
 	}
 	
 	
 	@:noCompletion private function __fromFile (path:String):Void {
 		
+		#if lime
 		var image = Image.fromFile (path);
 		__fromImage (image);
+		#end
 		
 	}
 	
 	
-	@:noCompletion private function __fromImage (image:Image):Void {
+	@:noCompletion private function __fromImage (image:#if lime Image #else Dynamic #end):Void {
 		
+		#if lime
 		if (image != null && image.buffer != null) {
 			
 			this.image = image;
@@ -2517,6 +2605,7 @@ class BitmapData implements IBitmapDrawable {
 			__isValid = true;
 			
 		}
+		#end
 		
 	}
 	
@@ -2528,6 +2617,7 @@ class BitmapData implements IBitmapDrawable {
 		
 		// TODO: Cache alpha image?
 		
+		#if lime
 		#if (js && html5)
 		
 		Image.loadFromFile (symbol.path).onComplete (function (image) {
@@ -2582,6 +2672,7 @@ class BitmapData implements IBitmapDrawable {
 		
 		__fromImage (image);
 		
+		#end
 		#end
 		
 	}
@@ -2647,18 +2738,23 @@ class BitmapData implements IBitmapDrawable {
 	
 	@:noCompletion private inline function __loadFromBase64 (base64:String, type:String):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromBase64 (base64, type).then (function (image) {
 			
 			__fromImage (image);
 			return Future.withValue (this);
 			
 		});
+		#else
+		return cast Future.withValue (null);
+		#end
 		
 	}
 	
 	
 	@:noCompletion private inline function __loadFromBytes (bytes:ByteArray, rawAlpha:ByteArray = null):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromBytes (bytes).then (function (image) {
 			
 			__fromImage (image);
@@ -2672,18 +2768,25 @@ class BitmapData implements IBitmapDrawable {
 			return Future.withValue (this);
 			
 		});
+		#else
+		return cast Future.withValue (null);
+		#end
 		
 	}
 	
 	
 	@:noCompletion private function __loadFromFile (path:String):Future<BitmapData> {
 		
+		#if lime
 		return Image.loadFromFile (path).then (function (image) {
 			
 			__fromImage (image);
 			return Future.withValue (this);
 			
 		});
+		#else
+		return cast Future.withValue (this);
+		#end
 		
 	}
 	
