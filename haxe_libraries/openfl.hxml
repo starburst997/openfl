@@ -1,0 +1,4 @@
+# Self-reference for some of the commands
+-D openfl=8.4.0
+-cp src
+--macro openfl._internal.utils.ExtraParams.include()

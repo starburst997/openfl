@@ -1,6 +1,7 @@
 -main Tools
--neko tools.n
--cp ../src
+-neko scripts/tools.n
+-cp src
+-cp scripts
 -lib hxp
 -lib lime
 -lib format
