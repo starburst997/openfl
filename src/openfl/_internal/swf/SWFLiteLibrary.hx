@@ -26,14 +26,16 @@ import openfl.utils.AssetLibrary;
 import openfl.utils.AssetType;
 import openfl.utils.ByteArray;
 
+using StringTools;
+
 #if !openfl_debug
 @:fileXml('tags="haxe,release"')
 @:noDebug
 #end
 
-
 @:keep class SWFLiteLibrary extends AssetLibrary {
 	
+	public static var scaleFactor:Float = 1.0;
 	
 	private var alphaCheck:Map<String, Bool>;
 	private var id:String;
@@ -153,7 +155,8 @@ import openfl.utils.ByteArray;
 		
 		if (id != null) {
 			
-			preload.set (id, true);
+			//preload.set (id, true);
+			if (!id.endsWith('a.png')) preload.set (id, true);
 			
 		}
 		
@@ -268,6 +271,10 @@ import openfl.utils.ByteArray;
 								
 								__copyChannel (image, alpha);
 								
+								if (scaleFactor != 1.0) image.resize(Math.ceil(image.width * scaleFactor), Math.ceil(image.height * scaleFactor));
+
+								alpha.buffer = null;
+								
 								cachedImages.set (id, image);
 								cachedImages.remove (bitmapSymbol.alpha);
 								alphaCheck.set (id, true);
@@ -288,7 +295,9 @@ import openfl.utils.ByteArray;
 			
 		}
 		
-		return super.loadImage (id);
+		return super.loadImage (id).onComplete (function (image) {
+			if (scaleFactor != 1.0) image.resize(Math.ceil(image.width * scaleFactor), Math.ceil(image.height * scaleFactor));	
+		});
 		
 	}
 	

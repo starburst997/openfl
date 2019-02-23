@@ -1,4 +1,4 @@
-package openfl.display; #if ((lime < "7.0.0") || (openfl < "8.4.0"))
+package openfl.display; //#if ((lime < "7.0.0") || (openfl < "8.4.0"))
 
 
 import lime.graphics.opengl.GL;
@@ -19,7 +19,7 @@ import js.Browser;
 
 #if (lime < "7.0.0")
 @:access(lime._backend.html5.HTML5GLRenderContext)
-@:access(lime._backend.native.NativeGLRenderContext)
+@:access(lime._backend.native.NativeOpenGLRenderContext)
 #end
 
 @:access(lime.graphics.opengl.GL)
@@ -68,7 +68,7 @@ import js.Browser;
 			__context = untyped WebGLDebugUtils.makeDebugContext (__context);
 			#end
 			
-			GL.context = new GLRenderContext (cast __context);
+			GL.context = new OpenGLRenderContext (cast __context);
 			__initialized = true;
 			
 		}
@@ -301,4 +301,4 @@ import js.Browser;
 }
 
 
-#end
+//#end

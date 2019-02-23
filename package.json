@@ -80,7 +80,7 @@
     "watch": "watch \"echo watch: Compiling... && npm run build-lib -s && echo watch: Compiled successfully.\" ./src ./scripts ./node_modules/lime/src",
     "preinstall": "mkdir -p ~/haxe",
     "postinstall": "mkdir -p haxe_libraries; lix download;",
-    "make-tools": "haxe scripts/run.hxml; haxe scripts/tools.hxml; lix run openfl rebuild tools;"
+    "make-tools": "cd scripts; haxe run.hxml -D no_generated; haxe tools.hxml -D no_generated; cd ..; lix run openfl rebuild tools;"
   },
   "devDependencies": {
     "@apache-royale/royale-js": "^0.9.3",

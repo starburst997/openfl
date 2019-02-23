@@ -832,6 +832,7 @@ class Tools {
 					
 					output.assets.push (asset);
 					
+					#if !no_generated
 					if (true || library.generate) {
 						
 						var generatedClasses = generateSWFClasses (project, output, swf, library.prefix);
@@ -843,6 +844,7 @@ class Tools {
 						}
 						
 					}
+					#end
 					
 					embeddedSWF = true;
 					//project.haxelibs.push (new Haxelib ("swf"));
@@ -916,6 +918,7 @@ class Tools {
 						
 						merge.assets.push (swfLiteAsset);
 						
+						#if !no_generated
 						if (FileSystem.exists (cacheDirectory + "/classNames.txt")) {
 							
 							var generatedClasses = File.getContent (cacheDirectory + "/classNames.txt").split ("\n");
@@ -927,6 +930,7 @@ class Tools {
 							}
 							
 						}
+						#end
 						
 						embeddedSWFLite = true;
 						
@@ -1055,6 +1059,7 @@ class Tools {
 						
 						merge.assets.push (swfLiteAsset);
 						
+						#if !no_generated
 						if (library.generate) {
 							
 							var targetPath;
@@ -1084,6 +1089,7 @@ class Tools {
 							}
 							
 						}
+						#end
 						
 						embeddedSWFLite = true;
 						
@@ -1155,6 +1161,12 @@ class Tools {
 			} else {
 				
 				generatedPath = #if (lime >= "7.0.0") Path.combine #else PathHelper.combine #end (targetDirectory, "haxe/_generated");
+				
+			}
+			
+			try {
+				System.mkdir(generatedPath);
+			} catch(e:Dynamic) {
 				
 			}
 			

@@ -1,5 +1,4 @@
 -main RunScript
--cp scripts
--neko run.n
+-neko ../run.n
 -lib hxp
 -D disable_cffi

@@ -967,7 +967,19 @@ class MovieClip extends Sprite #if (openfl_dynamic && haxe_ver < "4.0.0") implem
 		
 		if (frameObject.matrix != null) {
 			
-			displayObject.transform.matrix = frameObject.matrix;
+			//displayObject.transform.matrix = frameObject.matrix;
+			
+			if ((openfl._internal.swf.SWFLiteLibrary.scaleFactor != 1.0) && Std.is(displayObject, Bitmap)) {
+				var scaleX = displayObject.scaleX;
+				var scaleY = displayObject.scaleY;
+
+				displayObject.transform.matrix = frameObject.matrix;
+
+				displayObject.scaleX *= scaleX;
+				displayObject.scaleY *= scaleY;
+			} else {
+				displayObject.transform.matrix = frameObject.matrix;
+			}
 			
 		}
 		

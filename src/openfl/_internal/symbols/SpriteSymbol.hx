@@ -31,10 +31,10 @@ class SpriteSymbol extends SWFSymbol {
 	
 	private override function __createObject (swf:SWFLite):MovieClip {
 		
-		#if !macro
+		/*#if !macro
 		MovieClip.__initSWF = swf;
 		MovieClip.__initSymbol = this;
-		#end
+		#end*/
 		
 		var symbolType = null;
 		
@@ -72,6 +72,8 @@ class SpriteSymbol extends SWFSymbol {
 			movieClip = new MovieClip ();
 			
 		}
+		
+		movieClip.__fromSymbol(swf, this);
 		
 		return movieClip;
 		

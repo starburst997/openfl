@@ -31,8 +31,6 @@ class RunScript {
 		var cacheDirectory = Sys.getCwd ();
 		var workingDirectory = args.pop ();
 		
-		Log.warn ('Current dir ${cacheDirectory}, ${workingDirectory} (${args})');
-		
 		try {
 			
 			Sys.setCwd (workingDirectory);
