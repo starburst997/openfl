@@ -1,5 +1,5 @@
 # Self-reference for some of the commands
-# @run: haxelib run-dir openfl /Users/jdboivin/projects/openfl
+# @run: haxelib run-dir openfl ${SCOPE_DIR}
 -D openfl=8.4.0
 -cp src
 --macro openfl._internal.utils.ExtraParams.include()
